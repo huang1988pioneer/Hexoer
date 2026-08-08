@@ -1,0 +1,51 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Hexoer.ViewModels"
+             x:Class="Hexoer.Views.ConfigView"
+             x:DataType="vm:ConfigViewModel">
+  <DockPanel Margin="8">
+    <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,12">
+      <TextBlock Classes="h1" Text="編輯站點設定 _config.yml" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="可用快捷欄位快速修改常用項目，或直接編輯完整 YAML。" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="h2" Text="常用欄位" />
+          <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8" ColumnSpacing="8">
+            <TextBlock Grid.Row="0" VerticalAlignment="Center" Text="title" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TitleField}" />
+            <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="subtitle" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SubtitleField}" />
+            <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="description" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DescriptionField}" />
+            <TextBlock Grid.Row="3" VerticalAlignment="Center" Text="author" />
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding AuthorField}" />
+            <TextBlock Grid.Row="4" VerticalAlignment="Center" Text="language" />
+            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding LanguageField}" />
+            <TextBlock Grid.Row="5" VerticalAlignment="Center" Text="url" />
+            <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding UrlField}" PlaceholderText="https://user.github.io/repo" />
+            <TextBlock Grid.Row="6" VerticalAlignment="Center" Text="permalink" />
+            <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding PermalinkField}" />
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="accent" Content="套用常用欄位" Command="{Binding ApplyQuickFieldsCommand}" IsEnabled="{Binding !IsBusy}" />
+            <Button Content="重新載入" Command="{Binding LoadCommand}" IsEnabled="{Binding !IsBusy}" />
+            <Button Content="儲存 YAML" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsBusy}" />
+            <TextBlock Classes="status" VerticalAlignment="Center" Text="{Binding StatusMessage}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <Border Classes="card">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Classes="h2" Text="完整 _config.yml" Margin="0,0,0,8" />
+        <TextBox Text="{Binding ConfigText}"
+                 AcceptsReturn="True"
+                 FontFamily="Consolas,Cascadia Mono,monospace"
+                 TextWrapping="NoWrap" />
+      </DockPanel>
+    </Border>
+  </DockPanel>
+</UserControl>

@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Hexoer.ViewModels"
+             x:Class="Hexoer.Views.DeployView"
+             x:DataType="vm:DeployViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16" Margin="8">
+      <TextBlock Classes="h1" Text="部署到 GitHub Pages" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="設定 hexo-deployer-git、一鍵 deploy，並透過 GitHub API 查詢 Pages 狀態。" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="h2" Text="Deploy 設定" />
+          <TextBox Text="{Binding RepoUrl}"
+                   PlaceholderText="https://github.com/user/user.github.io.git 或 git@github.com:user/repo.git" />
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+            <TextBox Grid.Column="0" Text="{Binding Branch}" PlaceholderText="branch（預設 gh-pages）" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button Content="寫入設定 + 安裝 deployer" Command="{Binding SaveDeployConfigCommand}" IsEnabled="{Binding !IsBusy}" />
+              <Button Classes="accent" Content="Deploy" Command="{Binding DeployCommand}" IsEnabled="{Binding !IsBusy}" />
+            </StackPanel>
+          </Grid>
+          <TextBlock Classes="status" Text="{Binding StatusMessage}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="h2" Text="GitHub Pages 狀態" />
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto" RowSpacing="8">
+            <TextBox Grid.Row="0" Grid.Column="0" Text="{Binding Owner}" PlaceholderText="owner" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding RepoName}" PlaceholderText="repo" />
+            <TextBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                     Text="{Binding GitHubToken}"
+                     PlaceholderText="可選：GitHub Token（提高 API 配額 / 私有 repo）"
+                     PasswordChar="•" />
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="儲存 Token" Command="{Binding SaveTokenCommand}" />
+            <Button Classes="accent" Content="查詢 Pages 狀態" Command="{Binding CheckPagesStatusCommand}" IsEnabled="{Binding !IsBusy}" />
+            <Button Content="開啟網站" Command="{Binding OpenPagesUrlCommand}" />
+          </StackPanel>
+          <TextBlock Text="{Binding PagesStatusText}" TextWrapping="Wrap" />
+          <TextBox Text="{Binding PagesUrl}" IsReadOnly="True" PlaceholderText="Pages URL" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="h2" Text="部署日誌" />
+          <TextBox Text="{Binding LogText}"
+                   AcceptsReturn="True"
+                   IsReadOnly="True"
+                   FontFamily="Consolas,Cascadia Mono,monospace"
+                   MinHeight="200"
+                   MaxHeight="320"
+                   TextWrapping="NoWrap" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
