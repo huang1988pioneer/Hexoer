@@ -16,6 +16,11 @@
     <Setter Property="FontSize" Value="13" />
   </Style>
 
+  <Style Selector="TextBlock.caption">
+    <Setter Property="Opacity" Value="0.55" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
   <Style Selector="TextBlock.status">
     <Setter Property="Opacity" Value="0.9" />
     <Setter Property="FontSize" Value="13" />
@@ -56,5 +61,20 @@
 
   <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="#3B82F6" />
+  </Style>
+
+  <Style Selector="Border.deploymentMonitor">
+    <Setter Property="Background" Value="#102029" />
+    <Setter Property="BorderBrush" Value="#28677A" />
+  </Style>
+
+  <Style Selector="Border.pill">
+    <Setter Property="Background" Value="#1C2736" />
+    <Setter Property="CornerRadius" Value="999" />
+  </Style>
+
+  <Style Selector="TextBox.logBox">
+    <Setter Property="Background" Value="#0D1218" />
+    <Setter Property="Padding" Value="10" />
   </Style>
 </Styles>

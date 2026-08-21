@@ -1,6 +1,4 @@
 using System;
-using System.IO;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Hexoer.Models;
@@ -12,11 +10,13 @@ public sealed class GitService
 {
     private readonly ProcessRunner _runner;
     private readonly ProjectContext _context;
+    private readonly GitHubService _github;
 
-    public GitService(ProcessRunner runner, ProjectContext context)
+    public GitService(ProcessRunner runner, ProjectContext context, GitHubService github)
     {
         _runner = runner;
         _context = context;
+        _github = github;
     }
 
     public async Task<(string? UserName, string? Email, bool GitHubAuthenticated)> GetIdentityAsync(CancellationToken ct = default)
@@ -33,37 +33,22 @@ public sealed class GitService
         if (string.IsNullOrWhiteSpace(remoteUrl))
             throw new ArgumentException("請提供 GitHub repository URL。", nameof(remoteUrl));
 
-        var directory = _context.ProjectPath!;
-        var init = await _runner.RunShellAsync("git init", directory, ct).ConfigureAwait(false);
-        if (!init.Success) return init;
+        var target = GitHubService.ParseRepositoryTarget(remoteUrl);
+        if (!target.IsValid)
+            return CommandResult.Fail(target.ErrorMessage);
 
-        var branch = await _runner.RunShellAsync("git branch -M main", directory, ct).ConfigureAwait(false);
-        if (!branch.Success) return branch;
-
-        var remote = await _runner.RunShellAsync("git remote get-url origin", directory, ct).ConfigureAwait(false);
-        var remoteCommand = remote.Success
-            ? $"git remote set-url origin {Quote(remoteUrl)}"
-            : $"git remote add origin {Quote(remoteUrl)}";
-        var configured = await _runner.RunShellAsync(remoteCommand, directory, ct).ConfigureAwait(false);
-        if (!configured.Success) return configured;
-
-        var add = await _runner.RunShellAsync("git add .", directory, ct).ConfigureAwait(false);
-        if (!add.Success) return add;
-
-        var commit = await _runner.RunShellAsync("git commit -m \"Initial Hexo site\"", directory, ct).ConfigureAwait(false);
-        if (!commit.Success && !commit.CombinedOutput.Contains("nothing to commit", StringComparison.OrdinalIgnoreCase))
-            return commit;
-
-        return await _runner.RunShellAsync("git push -u origin main", directory, ct).ConfigureAwait(false);
+        return await _github.ConnectExistingRepositoryAndPushAsync(
+            _context.ProjectPath!,
+            target,
+            "Initial Hexo site via Hexoer",
+            progress: null,
+            cancellationToken: ct).ConfigureAwait(false);
     }
 
-    public async Task WritePagesWorkflowAsync(CancellationToken ct = default)
+    public Task WritePagesWorkflowAsync(CancellationToken ct = default)
     {
         EnsureProject();
-        var directory = Path.Combine(_context.ProjectPath!, ".github", "workflows");
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "pages.yml");
-        await File.WriteAllTextAsync(path, PagesWorkflow, ct).ConfigureAwait(false);
+        return _github.EnsureGitHubActionsWorkflowAsync(_context.ProjectPath!, ct);
     }
 
     private void EnsureProject()
@@ -73,49 +58,4 @@ public sealed class GitService
     }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
-
-    private const string PagesWorkflow = """
-name: Deploy Hexo to GitHub Pages
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./public
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
-""";
 }

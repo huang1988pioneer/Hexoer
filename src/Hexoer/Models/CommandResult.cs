@@ -12,4 +12,18 @@ public sealed class CommandResult
             : string.IsNullOrWhiteSpace(StandardOutput)
                 ? StandardError
                 : StandardOutput + "\n" + StandardError;
+
+    public static CommandResult Ok(string output = "") => new()
+    {
+        ExitCode = 0,
+        StandardOutput = output,
+        StandardError = string.Empty
+    };
+
+    public static CommandResult Fail(string error, int exitCode = -1, string output = "") => new()
+    {
+        ExitCode = exitCode == 0 ? -1 : exitCode,
+        StandardOutput = output,
+        StandardError = error
+    };
 }

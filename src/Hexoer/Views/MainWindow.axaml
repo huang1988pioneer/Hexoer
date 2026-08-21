@@ -7,7 +7,7 @@
         x:Class="Hexoer.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Hexoer ??Hexo 一站�?工具"
+        Title="Hexoer — Hexo 一站式工具"
         Width="1200"
         Height="760"
         MinWidth="960"
@@ -23,7 +23,7 @@
     <Border DockPanel.Dock="Bottom" Classes="statusbar" Padding="12,6">
       <Grid ColumnDefinitions="*,Auto">
         <TextBlock Text="{Binding ProjectPathDisplay}" Classes="muted" TextTrimming="CharacterEllipsis" />
-        <TextBlock Grid.Column="1" Text="{Binding SelectedPage.StatusMessage}" Classes="muted" Margin="16,0,0,0" />
+        <TextBlock Grid.Column="1" Text="{Binding GlobalStatus}" Classes="muted" Margin="16,0,0,0" />
       </Grid>
     </Border>
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -19,16 +20,20 @@ public sealed class ProcessRunner
         string fileName,
         string arguments,
         string? workingDirectory = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int timeoutMs = 0,
+        IDictionary<string, string?>? env = null)
     {
         var psi = CreateStartInfo(fileName, arguments, workingDirectory);
-        return await ExecuteAsync(psi, cancellationToken).ConfigureAwait(false);
+        ApplyEnv(psi, env);
+        return await ExecuteAsync(psi, cancellationToken, timeoutMs).ConfigureAwait(false);
     }
 
     public async Task<CommandResult> RunShellAsync(
         string command,
         string? workingDirectory = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int timeoutMs = 0)
     {
         ProcessStartInfo psi;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -40,7 +45,7 @@ public sealed class ProcessRunner
             psi = CreateStartInfo("/bin/bash", "-lc " + Quote(command), workingDirectory);
         }
 
-        return await ExecuteAsync(psi, cancellationToken).ConfigureAwait(false);
+        return await ExecuteAsync(psi, cancellationToken, timeoutMs).ConfigureAwait(false);
     }
 
     private static ProcessStartInfo CreateStartInfo(string fileName, string arguments, string? workingDirectory)
@@ -69,7 +74,22 @@ public sealed class ProcessRunner
         return psi;
     }
 
-    private async Task<CommandResult> ExecuteAsync(ProcessStartInfo psi, CancellationToken cancellationToken)
+    private static void ApplyEnv(ProcessStartInfo psi, IDictionary<string, string?>? env)
+    {
+        if (env is null) return;
+        foreach (var (key, value) in env)
+        {
+            if (value is null)
+                psi.Environment.Remove(key);
+            else
+                psi.Environment[key] = value;
+        }
+    }
+
+    private async Task<CommandResult> ExecuteAsync(
+        ProcessStartInfo psi,
+        CancellationToken cancellationToken,
+        int timeoutMs = 0)
     {
         OutputReceived?.Invoke($"> {psi.FileName} {psi.Arguments}");
         if (!string.IsNullOrWhiteSpace(psi.WorkingDirectory))
@@ -117,9 +137,35 @@ public sealed class ProcessRunner
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
+        using var timeoutCts = timeoutMs > 0
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        if (timeoutCts is not null)
+            timeoutCts.CancelAfter(timeoutMs);
+
+        var waitToken = timeoutCts?.Token ?? cancellationToken;
         try
         {
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await process.WaitForExitAsync(waitToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return new CommandResult
+            {
+                ExitCode = -1,
+                StandardOutput = stdout.ToString().TrimEnd(),
+                StandardError = $"Command timed out after {timeoutMs}ms.\n{stderr}"
+            };
         }
         catch (OperationCanceledException)
         {
@@ -135,6 +181,8 @@ public sealed class ProcessRunner
 
             throw;
         }
+
+        await Task.Delay(50, CancellationToken.None).ConfigureAwait(false);
 
         return new CommandResult
         {

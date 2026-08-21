@@ -1,3 +1,5 @@
+using System;
+
 namespace Hexoer.Services;
 
 /// <summary>
@@ -15,6 +17,9 @@ public sealed class ServiceHost
     public GitService Git { get; }
     public HexoServerService Server { get; }
     public MarkdownPreviewService MarkdownPreview { get; } = new();
+    public DeploymentMonitorService DeploymentMonitor { get; } = new();
+
+    public event Action<string>? AppStatusChanged;
 
     public ServiceHost()
     {
@@ -22,9 +27,11 @@ public sealed class ServiceHost
         Themes = new ThemeService(ProcessRunner, Project, Hexo);
         Config = new ConfigService(Project);
         Content = new ContentService(Project, Hexo);
-        GitHub = new GitHubService(Project, Config, Hexo);
-        Git = new GitService(ProcessRunner, Project);
+        GitHub = new GitHubService(Project, Config, Hexo, ProcessRunner, DeploymentMonitor);
+        Git = new GitService(ProcessRunner, Project, GitHub);
         Server = new HexoServerService(Project, ProcessRunner);
         Project.RestoreLastProject();
     }
+
+    public void SetAppStatus(string message) => AppStatusChanged?.Invoke(message);
 }

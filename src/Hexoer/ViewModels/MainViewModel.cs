@@ -38,6 +38,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         UpdateProjectDisplay();
         _services.Project.ProjectChanged += _ =>
             Avalonia.Threading.Dispatcher.UIThread.Post(UpdateProjectDisplay);
+        _services.AppStatusChanged += message =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => GlobalStatus = message);
 
         SelectedPage = Pages[0];
     }
@@ -67,7 +69,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         try
         {
             _services.Server.Stop();
-            _services.GitHub.Dispose();
+            foreach (var page in Pages)
+            {
+                if (page is IDisposable disposable)
+                    disposable.Dispose();
+            }
         }
         catch
         {

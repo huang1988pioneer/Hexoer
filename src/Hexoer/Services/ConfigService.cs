@@ -98,6 +98,12 @@ public sealed class ConfigService
         await SaveSiteConfigAsync(text).ConfigureAwait(false);
     }
 
+    public async Task UpdateSiteUrlAndRootAsync(string url, string root)
+    {
+        await UpsertSimpleKeyAsync("url", url).ConfigureAwait(false);
+        await UpsertSimpleKeyAsync("root", root).ConfigureAwait(false);
+    }
+
     public async Task<(string? Repo, string? Branch)> ReadDeploySettingsAsync()
     {
         if (!ConfigExists) return (null, null);
