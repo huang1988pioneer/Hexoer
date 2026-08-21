@@ -1,0 +1,21 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+*.DotSettings.user
+
+## OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## Hexo sample sites (if created under repo)
+public/
+.deploy_git/
+node_modules/
+
+## Packaging output
+artifacts/

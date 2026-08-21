@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Hexoer.ViewModels"
+             xmlns:models="using:Hexoer.Models"
+             x:Class="Hexoer.Views.ThemeView"
+             x:DataType="vm:ThemeViewModel">
+  <DockPanel Margin="8">
+    <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,12">
+      <TextBlock Classes="h1" Text="安裝與啟用 Themes" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="一鍵安裝 NexT、Butterfly、Fluid 等熱門主題，並寫入 _config.yml 的 theme 欄位。" />
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <TextBlock VerticalAlignment="Center" Text="目前啟用：" />
+        <TextBlock Classes="accent-text" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ActiveTheme}" />
+        <Button Content="重新整理" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}" />
+        <TextBlock Classes="status" VerticalAlignment="Center" Text="{Binding StatusMessage}" />
+      </StackPanel>
+    </StackPanel>
+
+    <Grid ColumnDefinitions="*,1.2*" ColumnSpacing="12">
+      <Border Grid.Column="0" Classes="card">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,12,0,0">
+            <Button Classes="accent" Content="安裝選取主題" Command="{Binding InstallSelectedCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" />
+            <Button Content="安裝並啟用" Command="{Binding InstallAndActivateCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" />
+            <Button Content="僅啟用（已安裝）" Command="{Binding ActivateSelectedCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <ListBox ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="models:ThemeInfo">
+                <StackPanel Spacing="4" Margin="4">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                    <TextBlock Classes="muted" Text="{Binding Name}" />
+                    <TextBlock Foreground="#22C55E" Text="已安裝" IsVisible="{Binding IsInstalled}" />
+                  </StackPanel>
+                  <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding Description}" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <StackPanel Grid.Column="1" Spacing="12">
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="h2" Text="自訂主題（Git）" />
+            <TextBox Text="{Binding CustomThemeName}" PlaceholderText="主題資料夾名稱，例如 next" />
+            <TextBox Text="{Binding CustomGitUrl}" PlaceholderText="https://github.com/.../theme.git" />
+            <Button Content="從 Git 安裝" Command="{Binding InstallCustomCommand}" IsEnabled="{Binding !IsBusy}" />
+          </StackPanel>
+        </Border>
+        <Border Classes="card">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Classes="h2" Text="日誌" Margin="0,0,0,8" />
+            <TextBox Text="{Binding LogText}"
+                     AcceptsReturn="True"
+                     IsReadOnly="True"
+                     FontFamily="Consolas,Cascadia Mono,monospace"
+                     MinHeight="220"
+                     TextWrapping="NoWrap" />
+          </DockPanel>
+        </Border>
+      </StackPanel>
+    </Grid>
+  </DockPanel>
+</UserControl>

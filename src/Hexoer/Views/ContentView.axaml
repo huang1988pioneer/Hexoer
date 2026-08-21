@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Hexoer.ViewModels"
+             xmlns:models="using:Hexoer.Models"
+             xmlns:html="clr-namespace:TheArtOfDev.HtmlRenderer.Avalonia;assembly=Avalonia.HtmlRenderer"
+             x:Class="Hexoer.Views.ContentView"
+             x:DataType="vm:ContentViewModel">
+  <DockPanel Margin="8">
+    <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="0,0,0,12">
+      <TextBlock Classes="h1" Text="編輯 Hexo Markdown 內容" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="管理 source/_posts 與 _drafts；右側為 Markdown 即時預覽。可用 hexo server 在瀏覽器預覽完整站點。" />
+
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+        <TextBox Grid.Column="0" Text="{Binding NewPostTitle}" PlaceholderText="新文章標題" />
+        <CheckBox Grid.Column="1" Content="草稿" IsChecked="{Binding CreateAsDraft}" VerticalAlignment="Center" />
+        <Button Grid.Column="2" Classes="accent" Content="新建" Command="{Binding CreatePostCommand}" IsEnabled="{Binding !IsBusy}" />
+        <Button Grid.Column="3" Content="重新整理" Command="{Binding RefreshPostsCommand}" />
+      </Grid>
+
+      <WrapPanel ItemSpacing="8" LineSpacing="8">
+        <Button Content="儲存" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsBusy}" />
+        <Button Content="刪除" Command="{Binding DeleteSelectedCommand}" />
+        <Button Content="hexo generate" Command="{Binding GeneratePreviewCommand}" IsEnabled="{Binding !IsBusy}" />
+        <CheckBox Content="即時預覽" IsChecked="{Binding ShowPreview}" VerticalAlignment="Center" Margin="8,0,0,0" />
+        <Button Content="重新預覽" Command="{Binding RefreshMarkdownPreviewCommand}" />
+        <Border Width="1" Background="#33FFFFFF" Margin="8,4" Height="20" VerticalAlignment="Center" />
+        <TextBlock Text="Port" VerticalAlignment="Center" Classes="muted" />
+        <TextBox Text="{Binding ServerPort}" Width="72" VerticalAlignment="Center" />
+        <Button Classes="accent" Content="啟動 hexo server" Command="{Binding StartServerCommand}"
+                IsEnabled="{Binding !IsServerRunning}" />
+        <Button Content="停止 server" Command="{Binding StopServerCommand}"
+                IsEnabled="{Binding IsServerRunning}" />
+        <Button Content="開啟瀏覽器" Command="{Binding OpenServerInBrowserCommand}"
+                IsEnabled="{Binding IsServerRunning}" />
+        <TextBlock Classes="accent-text" VerticalAlignment="Center" Text="{Binding ServerUrl}"
+                   IsVisible="{Binding IsServerRunning}" />
+      </WrapPanel>
+
+      <TextBlock Classes="status" Text="{Binding StatusMessage}" />
+      <TextBlock Classes="muted" Text="{Binding CurrentFilePath}" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <Grid ColumnDefinitions="240,*,*" ColumnSpacing="12">
+      <Border Grid.Column="0" Classes="card">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Classes="h2" Text="文章列表" Margin="0,0,0,8" />
+          <ListBox ItemsSource="{Binding Posts}" SelectedItem="{Binding SelectedPost}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="models:PostInfo">
+                <StackPanel Spacing="2" Margin="2">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextWrapping="Wrap" />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="muted" FontSize="11" Text="{Binding FileName}" />
+                    <TextBlock FontSize="11" Foreground="#F59E0B" Text="draft" IsVisible="{Binding IsDraft}" />
+                  </StackPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <Border Grid.Column="1" Classes="card">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Classes="h2" Text="編輯器" Margin="0,0,0,8" />
+          <TextBox Text="{Binding EditorText}"
+                   AcceptsReturn="True"
+                   AcceptsTab="True"
+                   FontFamily="Consolas,Cascadia Mono,monospace"
+                   TextWrapping="Wrap" />
+        </DockPanel>
+      </Border>
+
+      <Border Grid.Column="2" Classes="card" IsVisible="{Binding ShowPreview}">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Classes="h2" Text="Markdown 即時預覽" Margin="0,0,0,8" />
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <html:HtmlPanel Text="{Binding PreviewHtml}"
+                            Background="Transparent" />
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Grid>
+  </DockPanel>
+</UserControl>

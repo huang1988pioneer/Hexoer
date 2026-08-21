@@ -1,0 +1,60 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="TextBlock.h1">
+    <Setter Property="FontSize" Value="22" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Opacity" Value="0.72" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <Style Selector="TextBlock.status">
+    <Setter Property="Opacity" Value="0.9" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <Style Selector="TextBlock.accent-text">
+    <Setter Property="Foreground" Value="#60A5FA" />
+  </Style>
+
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="#14FFFFFF" />
+    <Setter Property="BorderBrush" Value="#22FFFFFF" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+
+  <Style Selector="Border.sidebar">
+    <Setter Property="Background" Value="#12FFFFFF" />
+    <Setter Property="BorderBrush" Value="#18FFFFFF" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+  </Style>
+
+  <Style Selector="Border.content">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Border.statusbar">
+    <Setter Property="Background" Value="#10FFFFFF" />
+    <Setter Property="BorderBrush" Value="#18FFFFFF" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+  </Style>
+
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="#2563EB" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#3B82F6" />
+  </Style>
+</Styles>

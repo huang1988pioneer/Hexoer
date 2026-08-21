@@ -1,0 +1,108 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Hexoer.ViewModels"
+             x:Class="Hexoer.Views.SetupView"
+             x:DataType="vm:SetupViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="16" Margin="8">
+      <TextBlock Classes="h1" Text="一鍵建立 Hexo 環境" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="檢查本機 Node / npm / Git，選擇或初始化 Hexo 專案，並安裝依賴。" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="h2" Text="專案路徑" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Grid.Column="0" Text="{Binding ProjectPath}" PlaceholderText="Hexo 專案資料夾" />
+            <Button Grid.Column="1" Content="瀏覽…" Command="{Binding BrowseProjectCommand}" />
+          </Grid>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Grid.Column="0" Text="{Binding SiteName}" PlaceholderText="網站名稱（初始化用）" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+              <Button Classes="accent" Content="一鍵建立" Command="{Binding OneClickSetupCommand}"
+                      IsEnabled="{Binding !IsBusy}" />
+              <Button Content="檢查環境" Command="{Binding CheckEnvironmentCommand}"
+                      IsEnabled="{Binding !IsBusy}" />
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="h2" Text="環境狀態" />
+          <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+            <TextBlock Grid.Row="0" Grid.Column="0" Classes="muted" Text="Node.js" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding NodeStatus}" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Classes="muted" Text="npm" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding NpmStatus}" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Classes="muted" Text="Git" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding GitStatus}" />
+            <TextBlock Grid.Row="3" Grid.Column="0" Classes="muted" Text="Hexo" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding HexoStatus}" />
+            <TextBlock Grid.Row="4" Grid.Column="0" Classes="muted" Text="專案" />
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ProjectStatus}" TextWrapping="Wrap" />
+            <TextBlock Grid.Row="5" Grid.Column="0" Classes="muted" Text="主題" />
+            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding ThemeStatus}" />
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+            <Button Content="npm install" Command="{Binding InstallDependenciesCommand}" IsEnabled="{Binding !IsBusy}" />
+            <Button Content="hexo generate" Command="{Binding GenerateCommand}" IsEnabled="{Binding !IsBusy}" />
+            <Button Content="hexo clean" Command="{Binding CleanCommand}" IsEnabled="{Binding !IsBusy}" />
+          </StackPanel>
+          <TextBlock Classes="status" Text="{Binding StatusMessage}" Margin="0,4,0,0" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="h2" Text="Git 與 GitHub Pages" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="認證交由 Git Credential Manager 或 GitHub CLI 管理；Hexoer 不會儲存 Personal Access Token。" />
+          <TextBlock Text="{Binding GitIdentityStatus}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding GitHubStatus}" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Text="{Binding RepositoryUrl}" PlaceholderText="https://github.com/USERNAME/REPOSITORY.git" />
+            <Button Grid.Column="1" Classes="accent" Content="建立 Git + Pages 工作流 + 推送" Command="{Binding InitializeGitHubCommand}" IsEnabled="{Binding !IsBusy}" />
+          </Grid>
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="首次推送后，请在 GitHub Settings → Pages → Source 选择 GitHub Actions。" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="h2" Text="本機預覽（hexo server）" />
+          <TextBlock Classes="muted" TextWrapping="Wrap"
+                     Text="啟動本機開發伺服器，於瀏覽器預覽完整 Hexo 站點（預設 http://localhost:4000/）。" />
+          <Grid ColumnDefinitions="Auto,80,Auto,Auto,Auto,*" ColumnSpacing="8">
+            <TextBlock VerticalAlignment="Center" Text="Port" />
+            <TextBox Grid.Column="1" Text="{Binding ServerPort}" />
+            <Button Grid.Column="2" Classes="accent" Content="啟動 server"
+                    Command="{Binding StartServerCommand}"
+                    IsEnabled="{Binding !IsServerRunning}" />
+            <Button Grid.Column="3" Content="停止"
+                    Command="{Binding StopServerCommand}"
+                    IsEnabled="{Binding IsServerRunning}" />
+            <Button Grid.Column="4" Content="開啟瀏覽器"
+                    Command="{Binding OpenServerInBrowserCommand}"
+                    IsEnabled="{Binding IsServerRunning}" />
+            <TextBlock Grid.Column="5" Classes="accent-text" VerticalAlignment="Center"
+                       Text="{Binding ServerUrl}" IsVisible="{Binding IsServerRunning}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="h2" Text="執行日誌" />
+          <TextBox Text="{Binding LogText}"
+                   AcceptsReturn="True"
+                   IsReadOnly="True"
+                   FontFamily="Consolas,Cascadia Mono,monospace"
+                   MinHeight="200"
+                   MaxHeight="320"
+                   TextWrapping="NoWrap" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Hexoer.ViewModels"
+             x:Class="Hexoer.Views.ThemeConfigView"
+             x:DataType="vm:ThemeConfigViewModel">
+  <DockPanel Margin="8">
+    <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,12">
+      <TextBlock Classes="h1" Text="編輯主題設定檔" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="編輯 themes/&lt;name&gt;/_config.yml（例如 NexT 的 scheme、menu、sidebar 等）。" />
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+        <TextBlock VerticalAlignment="Center" Text="主題" />
+        <ComboBox Grid.Column="1"
+                  ItemsSource="{Binding InstalledThemes}"
+                  SelectedItem="{Binding SelectedThemeName}"
+                  MinWidth="180"
+                  HorizontalAlignment="Stretch" />
+        <Button Grid.Column="2" Content="重新載入" Command="{Binding LoadConfigCommand}" IsEnabled="{Binding !IsBusy}" />
+        <Button Grid.Column="3" Classes="accent" Content="儲存" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsBusy}" />
+      </Grid>
+      <TextBlock Classes="muted" Text="{Binding ConfigPath}" TextWrapping="Wrap" />
+      <TextBlock Classes="status" Text="{Binding StatusMessage}" />
+    </StackPanel>
+
+    <Border Classes="card">
+      <TextBox Text="{Binding ConfigText}"
+               AcceptsReturn="True"
+               FontFamily="Consolas,Cascadia Mono,monospace"
+               TextWrapping="NoWrap" />
+    </Border>
+  </DockPanel>
+</UserControl>
