@@ -41,10 +41,11 @@ dotnet run --project src/Hexoer
 ### 一鍵打包
 
 ```powershell
-# 產生 portable ZIP + 安裝程式（有 Inno Setup 時產出 Setup.exe）
-.\scripts\build-installer.ps1
+# 參考 Hugoer 流程：發佈 + 打包 release 產物
+.\scripts\publish.ps1
 
-# 或
+# 僅使用舊的打包入口也可以
+.\scripts\build-installer.ps1
 .\scripts\build-installer.cmd
 ```
 
@@ -53,6 +54,7 @@ dotnet run --project src/Hexoer
 | 路徑 | 說明 |
 |------|------|
 | `artifacts/publish/win-x64/` | 可直接執行的 self-contained 發佈檔 |
+| `artifacts/releases/` | release 彙整目錄 |
 | `artifacts/portable/Hexoer-*-win-x64-portable.zip` | 免安裝壓縮包 |
 | `artifacts/installer/Hexoer-Setup-*.exe` | Windows 安裝程式（需本機安裝 [Inno Setup 6](https://jrsoftware.org/isinfo.php)） |
 | `artifacts/installer/Install-Hexoer.ps1` | 若無 Inno Setup，自動產生的軟安裝腳本（捷徑 + LocalAppData） |
@@ -62,6 +64,7 @@ dotnet run --project src/Hexoer
 ```powershell
 .\scripts\publish-windows.ps1
 .\scripts\publish-windows.ps1 -SingleFile   # 單檔（較大、啟動略慢）
+.\scripts\publish.ps1 -Version 1.1.1 -SingleFile
 ```
 
 > 安裝包為 **self-contained**，終端使用者不必另外安裝 .NET Runtime。  

@@ -12,11 +12,12 @@
 .EXAMPLE
   .\scripts\build-installer.ps1
   .\scripts\build-installer.ps1 -SingleFile
+  .\scripts\build-installer.ps1 -Version 1.1.1
 #>
 param(
     [switch]$SingleFile,
     [switch]$SkipPublish,
-    [string]$Version = "1.1.0"
+    [string]$Version = "1.1.1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,9 +51,9 @@ Write-Host "========================================" -ForegroundColor Cyan
 if (-not $SkipPublish) {
     $publishScript = Join-Path $PSScriptRoot "publish-windows.ps1"
     if ($SingleFile) {
-        & $publishScript -Configuration Release -Runtime win-x64 -SingleFile
+        & $publishScript -Configuration Release -Runtime win-x64 -Version $Version -SingleFile
     } else {
-        & $publishScript -Configuration Release -Runtime win-x64
+        & $publishScript -Configuration Release -Runtime win-x64 -Version $Version
     }
 }
 

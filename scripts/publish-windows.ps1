@@ -6,6 +6,7 @@
 param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
+    [string]$Version = "1.1.1",
     [switch]$SingleFile,
     [switch]$FrameworkDependent
 )
@@ -15,7 +16,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Project = Join-Path $Root "src\Hexoer\Hexoer.csproj"
 $OutDir = Join-Path $Root "artifacts\publish\$Runtime"
 
-Write-Host "==> Publishing Hexoer ($Configuration / $Runtime)" -ForegroundColor Cyan
+Write-Host "==> Publishing Hexoer v$Version ($Configuration / $Runtime)" -ForegroundColor Cyan
 if (Test-Path $OutDir) {
     Remove-Item $OutDir -Recurse -Force
 }
@@ -25,8 +26,12 @@ $args = @(
     "-c", $Configuration,
     "-r", $Runtime,
     "-o", $OutDir,
-    "/p:PublishReadyToRun=true",
+    "/p:PublishReadyToRun=false",
     "/p:IncludeNativeLibrariesForSelfExtract=true",
+    "/p:Version=$Version",
+    "/p:AssemblyVersion=$Version.0",
+    "/p:FileVersion=$Version.0",
+    "/p:InformationalVersion=$Version",
     "/p:DebugType=none",
     "/p:DebugSymbols=false",
     "/p:CopyOutputSymbolsToPublishDirectory=false"

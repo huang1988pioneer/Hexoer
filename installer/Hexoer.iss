@@ -1,9 +1,11 @@
 ; Inno Setup script for Hexoer
-; Build with: scripts\build-installer.ps1
+; Build with: scripts\publish.ps1 or scripts\build-installer.ps1
 ; Requires Inno Setup 6+ (https://jrsoftware.org/isinfo.php)
 
 #define MyAppName "Hexoer"
-#define MyAppVersion "1.1.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "1.1.1"
+#endif
 #define MyAppPublisher "Hexoer"
 #define MyAppURL "https://github.com/"
 #define MyAppExeName "Hexoer.exe"
