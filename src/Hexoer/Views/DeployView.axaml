@@ -7,17 +7,17 @@
     <StackPanel Spacing="16" Margin="8" MaxWidth="980">
       <TextBlock Classes="h1" Text="多平台 Pages" />
       <TextBlock Classes="muted" TextWrapping="Wrap"
-                 Text="將 Hexo 網站推上 GitHub、GitLab、Codeberg 或 Bitbucket。GitHub 會自動加入 Actions workflow，GitLab 會自動加入 Pages CI；Codeberg 需將靜態輸出推到 pages branch 並設定 Webhook/Actions，Bitbucket 會使用標準 git push。" />
+                 Text="{Binding PlatformWorkflowSummary}" />
 
       <Border Classes="card">
         <StackPanel Spacing="8">
           <TextBlock Classes="h2" Text="本機工具" />
           <TextBlock Text="{Binding GitStatus}" />
-          <TextBlock Text="{Binding GhStatus}" />
+          <TextBlock Text="{Binding GhStatus}" IsVisible="{Binding IsGitHubProvider}" />
           <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
             <Button Content="重新整理狀態" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}" />
-            <Button Content="GitHub 登入 (gh auth)" Command="{Binding LoginCommand}" IsEnabled="{Binding !IsBusy}" />
-            <Button Content="只加入 workflow 檔" Command="{Binding AddWorkflowOnlyCommand}" />
+            <Button Content="GitHub 登入 (gh auth)" Command="{Binding LoginCommand}" IsEnabled="{Binding !IsBusy}" IsVisible="{Binding IsGitHubProvider}" />
+            <Button Content="只加入 GitHub workflow 檔" Command="{Binding AddWorkflowOnlyCommand}" IsVisible="{Binding IsGitHubProvider}" />
           </StackPanel>
         </StackPanel>
       </Border>
@@ -83,8 +83,8 @@
               <Button Content="查詢 Pages 狀態" Command="{Binding RefreshPagesStatusCommand}"
                       IsEnabled="{Binding !IsBusy}" />
               <Button Content="開啟網站" Command="{Binding OpenPagesUrlCommand}" />
-              <Button Content="啟用 Pages (Actions)" Command="{Binding EnablePagesCommand}"
-                      IsEnabled="{Binding !IsBusy}" />
+              <Button Content="啟用 GitHub Pages (Actions)" Command="{Binding EnablePagesCommand}"
+                      IsEnabled="{Binding !IsBusy}" IsVisible="{Binding IsGitHubProvider}" />
             </StackPanel>
           </StackPanel>
         </Border>
@@ -115,8 +115,9 @@
 
       <Border Classes="card">
         <StackPanel Spacing="12">
-          <TextBlock Classes="h2" Text="建立新的 GitHub Repository" />
-          <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+          <TextBlock Classes="h2" Text="{Binding CreateRepositoryTitle}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CreateRepositoryDescription}" />
+          <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8" IsVisible="{Binding IsGitHubProvider}">
             <TextBlock Text="Repo 名稱" VerticalAlignment="Center" />
             <TextBox Grid.Column="1" Text="{Binding RepoName}"
                      PlaceholderText="my-hexo-site（只填新 repository 名稱）" />
@@ -127,14 +128,14 @@
             <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding CommitMessage}" />
           </Grid>
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="建立 GitHub Repo + 推送 + 啟用 Pages" Classes="accent"
+            <Button Content="{Binding CreateRepositoryButtonText}" Classes="accent"
                     Command="{Binding CreateAndDeployCommand}"
-                    IsEnabled="{Binding !IsBusy}" />
+                    IsEnabled="{Binding !IsBusy}" IsVisible="{Binding IsGitHubProvider}" />
             <Button Content="建置、提交並推送更新" Command="{Binding PushCommand}"
                     IsEnabled="{Binding !IsBusy}" />
           </StackPanel>
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="GitHub 流程會寫入 .github/workflows/hexo.yml；GitLab 流程會寫入 .gitlab-ci.yml 並由 Pages CI 發布 public/。Codeberg Pages 建議用 hexo-deployer-git 將 public/ 推到 pages branch，或在 Codeberg 設定 Forgejo Actions。Bitbucket 會提交並推送到 origin，請在平台端設定 Pages/CI 或 deploy 分支。" />
+                     Text="{Binding PlatformWorkflowSummary}" />
         </StackPanel>
       </Border>
 
@@ -142,7 +143,7 @@
         <StackPanel Spacing="10">
           <TextBlock Classes="h2" Text="進階：hexo-deployer-git（本機 generate 後推部署分支）" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="舊流程。新站請優先使用上方的 GitHub Actions。若你仍使用 hexo-deployer-git，可在此寫入 _config.yml 的 deploy 區塊。" />
+                     Text="{Binding DeployerIntroText}" />
           <Grid ColumnDefinitions="170,*" ColumnSpacing="8">
             <ComboBox ItemsSource="{Binding RemoteProviders}"
                       SelectedItem="{Binding SelectedRepositoryProvider}"

@@ -52,9 +52,38 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     [ObservableProperty] public partial bool IsCheckingDeployment { get; set; }
     [ObservableProperty] public partial string DeployerRepoUrl { get; set; } = string.Empty;
     [ObservableProperty] public partial string DeployerBranch { get; set; } = "gh-pages";
+    public string SelectedProviderName => ProviderName(SelectedRepositoryProvider.Provider);
+    public bool IsGitHubProvider => SelectedRepositoryProvider.Provider == RemoteGitProvider.GitHub;
+    public bool IsNonGitHubProvider => !IsGitHubProvider;
     public string DeployerBranchPlaceholder => SelectedRepositoryProvider.Provider == RemoteGitProvider.Codeberg
         ? "branch（預設 pages）"
         : "branch（預設 gh-pages）";
+    public string CreateRepositoryTitle => IsGitHubProvider
+        ? "建立新的 GitHub Repository"
+        : $"建立新的 {SelectedProviderName} Repository";
+    public string CreateRepositoryDescription => SelectedRepositoryProvider.Provider switch
+    {
+        RemoteGitProvider.GitHub => "GitHub 可由 Hexoer 建立 repository、推送網站，並啟用 GitHub Pages Actions。",
+        RemoteGitProvider.GitLab => "GitLab 請先在 GitLab 建立 repository，再把 GitLab repository URL 貼到上方連結區；Hexoer 會加入 .gitlab-ci.yml 並推送。",
+        RemoteGitProvider.Codeberg => "Codeberg 請先在 Codeberg 建立 pages repository，再把 Codeberg repository URL 貼到上方連結區；Codeberg Pages 使用 pages branch 與 Webhook/Forgejo Actions。",
+        RemoteGitProvider.Bitbucket => "Bitbucket 請先在 Bitbucket 建立 repository，再把 Bitbucket repository URL 貼到上方連結區；Hexoer 會用標準 git push。",
+        _ => "請先在選定平台建立 repository，再把 repository URL 貼到上方連結區。"
+    };
+    public string CreateRepositoryButtonText => "建立 GitHub Repo + 推送 + 啟用 Pages";
+    public string PlatformWorkflowSummary => SelectedRepositoryProvider.Provider switch
+    {
+        RemoteGitProvider.GitHub => "GitHub 流程會寫入 .github/workflows/hexo.yml，並使用 GitHub Actions 部署 GitHub Pages。",
+        RemoteGitProvider.GitLab => "GitLab 流程會寫入 .gitlab-ci.yml，並由 GitLab Pages CI 發布 public/。",
+        RemoteGitProvider.Codeberg => "Codeberg Pages 建議用 hexo-deployer-git 將 public/ 推到 pages branch，或在 Codeberg 設定 Forgejo Actions。",
+        RemoteGitProvider.Bitbucket => "Bitbucket 會提交並推送到 origin，請在 Bitbucket 端設定 Pages/CI 或 deploy 分支。",
+        _ => "請依選定平台設定 Pages/CI 或 deploy 分支。"
+    };
+    public string DeployerIntroText => SelectedRepositoryProvider.Provider switch
+    {
+        RemoteGitProvider.Codeberg => "Codeberg Pages 用法：將 Hexo generate 產生的 public/ 部署到 pages branch，並在 Codeberg 設定 Webhook 或 Forgejo Actions。",
+        RemoteGitProvider.GitHub => "GitHub 新站請優先使用 GitHub Actions；若仍使用 hexo-deployer-git，可在此寫入 _config.yml 的 deploy 區塊。",
+        _ => $"{SelectedProviderName} 若使用 hexo-deployer-git，可在此寫入 _config.yml 的 deploy 區塊。"
+    };
 
     public DeployViewModel(ServiceHost services)
     {
@@ -106,12 +135,12 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             _skipProviderSettingsLoad = false;
             LoadDeployProviderSettings(provider, preserveRepositoryUrl: true);
             SaveDeployProviderSettings(provider);
-            OnPropertyChanged(nameof(DeployerBranchPlaceholder));
+            NotifyProviderUiChanged();
             return;
         }
 
         LoadDeployProviderSettings(provider);
-        OnPropertyChanged(nameof(DeployerBranchPlaceholder));
+        NotifyProviderUiChanged();
     }
 
     partial void OnDeployerRepoUrlChanged(string value) =>
@@ -262,6 +291,13 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     private async Task CreateAndDeployAsync()
     {
         if (!RequireSite(out var site)) return;
+        if (!IsGitHubProvider)
+        {
+            StatusMessage = $"{SelectedProviderName} 請先在平台建立 repository，再把 repository URL 貼到上方連結區。";
+            AppendLog(StatusMessage);
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(RepoName))
         {
             StatusMessage = "請輸入 repository 名稱";
@@ -380,6 +416,13 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     private async Task EnablePagesAsync()
     {
         if (!RequireSite(out var site)) return;
+        if (!IsGitHubProvider)
+        {
+            StatusMessage = $"{SelectedProviderName} 不使用 GitHub Actions 啟用流程；請在 {SelectedProviderName} 平台端設定 Pages/CI。";
+            AppendLog(StatusMessage);
+            return;
+        }
+
         IsBusy = true;
         try
         {
@@ -435,6 +478,13 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     private async Task AddWorkflowOnlyAsync()
     {
         if (!RequireSite(out var site)) return;
+        if (!IsGitHubProvider)
+        {
+            StatusMessage = $"{SelectedProviderName} 不使用 GitHub workflow；請使用上方連結流程或平台自己的 Pages/CI 設定。";
+            AppendLog(StatusMessage);
+            return;
+        }
+
         await _services.GitHub.EnsureGitHubActionsWorkflowAsync(site);
         StatusMessage = "已寫入 .github/workflows/hexo.yml（若尚未存在）";
         AppendLog(StatusMessage);
@@ -572,10 +622,14 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
                 actionLine;
         }
 
+        var gitHubAuthSummary = info.Provider == RemoteGitProvider.GitHub
+            ? $"GitHub 使用者：{info.GhUser ?? "（未登入）"}\n" +
+              $"GitHub 驗證：{(info.GhAuthenticated ? "已登入" : "未登入")}\n"
+            : string.Empty;
+
         return
             $"本機 origin 平台：{ProviderName(info.Provider)}\n" +
-            $"GitHub 使用者：{info.GhUser ?? "（未登入）"}\n" +
-            $"GitHub 驗證：{(info.GhAuthenticated ? "已登入" : "未登入")}\n" +
+            gitHubAuthSummary +
             $"分支：{info.Branch ?? "—"}\n" +
             $"Remote：{info.RemoteUrl ?? "（無 origin）"}\n" +
             $"Repo：{(info.Owner is null ? "—" : $"{info.Owner}/{info.Repo}")}";
@@ -613,6 +667,19 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         RemoteGitProvider.Bitbucket => "Bitbucket",
         _ => "Git"
     };
+
+    private void NotifyProviderUiChanged()
+    {
+        OnPropertyChanged(nameof(SelectedProviderName));
+        OnPropertyChanged(nameof(IsGitHubProvider));
+        OnPropertyChanged(nameof(IsNonGitHubProvider));
+        OnPropertyChanged(nameof(DeployerBranchPlaceholder));
+        OnPropertyChanged(nameof(CreateRepositoryTitle));
+        OnPropertyChanged(nameof(CreateRepositoryDescription));
+        OnPropertyChanged(nameof(CreateRepositoryButtonText));
+        OnPropertyChanged(nameof(PlatformWorkflowSummary));
+        OnPropertyChanged(nameof(DeployerIntroText));
+    }
 
     private bool ShouldApplyOriginRemote(string? remoteUrl)
     {

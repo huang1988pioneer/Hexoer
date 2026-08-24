@@ -950,6 +950,19 @@ public/
             .ConfigureAwait(false);
         if (!fetch.Success) return ExplainGitFailure(fetch);
 
+        var remoteRef = await GitAsync(
+            $"show-ref --verify --quiet \"refs/remotes/origin/{branch}\"",
+            sitePath,
+            10_000,
+            cancellationToken).ConfigureAwait(false);
+        if (!remoteRef.Success)
+        {
+            return CommandResult.Fail(
+                $"遠端 origin/{branch} 不存在或目前帳號無法讀取，已停止自動合併。請確認 repository 預設分支與平台權限後再推送。",
+                remoteRef.ExitCode,
+                remoteRef.StandardOutput);
+        }
+
         return await MergeOriginBranchAsync(sitePath, branch, progress, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -968,18 +981,27 @@ public/
                 result.StandardOutput);
         }
 
-        if (ContainsAny(output, "You are not allowed to push code", "requested URL returned error: 403", "HTTP 403"))
+        if (ContainsAny(output, "codeberg.org") && ContainsAny(
+                output,
+                "not allowed to push",
+                "pre-receive hook declined",
+                "Authentication failed",
+                "Credentials are incorrect or have expired",
+                "could not read Username",
+                "Invalid username or password",
+                "403",
+                "Forbidden"))
         {
             return CommandResult.Fail(
-                "推送失敗：目前 Git push 使用的 GitLab 帳號或 token 沒有此專案的寫入權限。請確認它和瀏覽器登入帳號一致，並在 GitLab 將帳號加入專案或群組授予 Developer/Maintainer；或改用有 write_repository 權限的 Personal Access Token / SSH key 後重試。\n" + output,
+                "推送失敗：Codeberg 認證或權限不足。請確認本機 Git Credential Manager / SSH 使用的是 Codeberg repository owner 或已被授權的 collaborator；若 HTTPS 使用錯帳號，請清除 Windows 認證管理員中的 git:https://codeberg.org，重新輸入 Codeberg 使用者名稱與 Access Token。Codeberg Pages 的網站內容通常部署到 pages branch。\n" + output,
                 result.ExitCode,
                 result.StandardOutput);
         }
 
-        if (ContainsAny(output, "codeberg.org") && ContainsAny(output, "Authentication failed", "Credentials are incorrect or have expired", "could not read Username", "Invalid username or password", "403", "Forbidden"))
+        if (ContainsAny(output, "You are not allowed to push code", "requested URL returned error: 403", "HTTP 403"))
         {
             return CommandResult.Fail(
-                "推送失敗：Codeberg HTTPS 認證失敗。請在 Windows 認證管理員清除 git:https://codeberg.org，重新 push 時使用 Codeberg 使用者名稱與 Access Token；或改用 SSH remote 與 SSH key。Codeberg Pages 的網站內容通常需部署到 pages branch。\n" + output,
+                "推送失敗：目前 Git push 使用的 GitLab 帳號或 token 沒有此專案的寫入權限。請確認它和瀏覽器登入帳號一致，並在 GitLab 將帳號加入專案或群組授予 Developer/Maintainer；或改用有 write_repository 權限的 Personal Access Token / SSH key 後重試。\n" + output,
                 result.ExitCode,
                 result.StandardOutput);
         }
@@ -1006,8 +1028,7 @@ public/
             output,
             "fetch first",
             "Updates were rejected because the remote contains work that you do not have locally",
-            "non-fast-forward",
-            "failed to push some refs");
+            "non-fast-forward");
 
     private static bool ContainsAny(string text, params string[] needles)
     {
