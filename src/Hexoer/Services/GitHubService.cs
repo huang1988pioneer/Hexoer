@@ -282,6 +282,26 @@ public/
                 await File.WriteAllTextAsync(gitLabCi, DefaultGitLabPagesCi, cancellationToken)
                     .ConfigureAwait(false);
                 return;
+
+            case RemoteGitProvider.Codeberg:
+                var docsDir = Path.Combine(sitePath, "docs");
+                Directory.CreateDirectory(docsDir);
+                var codebergDoc = Path.Combine(docsDir, "codeberg-pages.md");
+                if (!File.Exists(codebergDoc))
+                {
+                    await File.WriteAllTextAsync(codebergDoc, CodebergPagesNotes, cancellationToken).ConfigureAwait(false);
+                }
+                return;
+
+            case RemoteGitProvider.Bitbucket:
+                var bitbucketDocsDir = Path.Combine(sitePath, "docs");
+                Directory.CreateDirectory(bitbucketDocsDir);
+                var bitbucketDoc = Path.Combine(bitbucketDocsDir, "bitbucket-pages.md");
+                if (!File.Exists(bitbucketDoc))
+                {
+                    await File.WriteAllTextAsync(bitbucketDoc, BitbucketPagesNotes, cancellationToken).ConfigureAwait(false);
+                }
+                return;
         }
     }
 
@@ -780,14 +800,15 @@ public/
 
     private static string ResolvePushBranch(GitHubRepositoryTarget target, string? remoteHeadBranch)
     {
-        if (target.Provider == RemoteGitProvider.Codeberg
-            && target.Repository?.Equals("pages", StringComparison.OrdinalIgnoreCase) == true)
-            return "pages";
-
         if (!string.IsNullOrWhiteSpace(remoteHeadBranch))
-            return remoteHeadBranch.Trim();
+        {
+            var trimmed = remoteHeadBranch.Trim();
+            if (target.Provider == RemoteGitProvider.Codeberg && trimmed.Equals("pages", StringComparison.OrdinalIgnoreCase))
+                return "main";
+            return trimmed;
+        }
 
-        return target.Provider == RemoteGitProvider.Codeberg ? "pages" : "main";
+        return "main";
     }
 
     private async Task<CommandResult?> PrepareDeploymentMarkerAsync(
@@ -1338,6 +1359,34 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+""";
+
+    private const string CodebergPagesNotes = """
+# Codeberg Pages 部署說明
+
+Hexoer 會將 Hexo 網站原始碼推送到 Codeberg 的 `main` 分支。
+要發布 Codeberg Pages 靜態網站，請依照以下步驟設定：
+
+1. **靜態輸出部署到 pages 分支**：
+   在 Hexoer 的「進階：hexo-deployer-git」區塊中，將 Deployer Repo URL 設為此 Codeberg repository，Branch 設為 `pages`，然後點選「Deploy」。
+   Hexoer 會將 `public/` 編譯產生的靜態網頁（含 `index.html`）推送到 `pages` 分支。
+
+2. **在 Codeberg 設定 Webhook**：
+   - 進入 Codeberg repository 的 **Settings > Webhooks**。
+   - 點選 **Add Webhook**，選擇 **Forgejo**。
+   - Target URL 填入：
+     - 若為使用者網站（repo 名稱為 `pages`）：`https://<username>.codeberg.page/`
+     - 若為專案網站：`https://<username>.codeberg.page/<repository>/`
+   - Trigger Events 勾選 **Push Events**。
+
+3. 設定完成後，只要透過 Hexoer 執行 Deploy，Codeberg Pages 即會自動更新。
+""";
+
+    private const string BitbucketPagesNotes = """
+# Bitbucket Pages 部署說明
+
+Hexoer 會將網站原始碼推送到 Bitbucket 的 `main` 分支。
+若要在 Bitbucket 上架設 Pages，請使用 `hexo-deployer-git` 將靜態內容推送到對應的分支，或在 Bitbucket Pipelines 中配置部署工作。
 """;
 
     private static bool IsPublishedUserSitePath(string[] segments)
