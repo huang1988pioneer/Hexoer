@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Hexoer.Helpers;
+using Hexoer.Models;
 using Hexoer.Services;
 
 namespace Hexoer.ViewModels;
@@ -11,9 +13,15 @@ namespace Hexoer.ViewModels;
 public partial class SetupViewModel : PageViewModelBase
 {
     private readonly ServiceHost _services;
+    private bool _loadingProviderSettings;
+    private bool _skipProviderSettingsLoad;
 
     public override string Title => "環境設定";
     public override string Icon => "⚙";
+
+    public IReadOnlyList<RemoteProviderOption> RemoteProviders { get; } = RemoteProviderOption.All;
+    [ObservableProperty] public partial RemoteProviderOption SelectedSetupProvider { get; set; } =
+        RemoteProviderOption.FromProvider(RemoteGitProvider.GitHub);
 
     [ObservableProperty] public partial string ProjectPath { get; set; } = string.Empty;
     [ObservableProperty] public partial string SiteName { get; set; } = "my-blog";
@@ -39,6 +47,11 @@ public partial class SetupViewModel : PageViewModelBase
     public SetupViewModel(ServiceHost services)
     {
         _services = services;
+        var provider = _services.Project.Settings.GetSelectedSetupProvider();
+        _loadingProviderSettings = true;
+        SelectedSetupProvider = RemoteProviderOption.FromProvider(provider);
+        _loadingProviderSettings = false;
+        LoadSetupProviderSettings(provider);
         ProjectPath = services.Project.ProjectPath ?? string.Empty;
         _services.ProcessRunner.OutputReceived += line =>
             Avalonia.Threading.Dispatcher.UIThread.Post(() => AppendLog(line));
@@ -54,6 +67,32 @@ public partial class SetupViewModel : PageViewModelBase
         ProjectPath = _services.Project.ProjectPath ?? string.Empty;
         RefreshServerState();
         await CheckEnvironmentAsync();
+    }
+
+    partial void OnSelectedSetupProviderChanged(RemoteProviderOption value)
+    {
+        if (_loadingProviderSettings)
+            return;
+
+        var provider = value.Provider;
+        _services.Project.Settings.SetSelectedSetupProvider(provider);
+        if (_skipProviderSettingsLoad)
+        {
+            _skipProviderSettingsLoad = false;
+            SaveSetupProviderSettings(provider);
+            return;
+        }
+
+        LoadSetupProviderSettings(provider);
+    }
+
+    partial void OnRepositoryUrlChanged(string value)
+    {
+        var target = ParseRepositoryTarget(value);
+        if (target.IsValid && target.Provider != SelectedSetupProvider.Provider && target.Provider != RemoteGitProvider.Unknown)
+            SelectSetupProvider(target.Provider, loadSettings: false);
+
+        SaveSetupProviderSettings(SelectedSetupProvider.Provider);
     }
 
     [RelayCommand]
@@ -110,22 +149,27 @@ public partial class SetupViewModel : PageViewModelBase
 
     partial void OnCloneRepositoryUrlChanged(string value)
     {
-        var target = GitHubService.ParseRepositoryTarget(value);
+        var target = ParseRepositoryTarget(value);
         CanCloneRepository = target.IsValid;
         if (!target.IsValid)
         {
             CloneTargetSummary = string.IsNullOrWhiteSpace(value)
-                ? "貼上 GitHub、GitLab、Codeberg、Bitbucket repository 或 Pages 網址後，Hexoer 會顯示將複製的目標。"
+                ? "選擇平台後，可貼上 repository / Pages 網址或輸入 owner/repo；各平台會分別保存。"
                 : target.ErrorMessage;
+            SaveSetupProviderSettings(SelectedSetupProvider.Provider);
             return;
         }
 
+        if (target.Provider != SelectedSetupProvider.Provider && target.Provider != RemoteGitProvider.Unknown)
+            SelectSetupProvider(target.Provider, loadSettings: false);
+
+        SaveSetupProviderSettings(SelectedSetupProvider.Provider);
         CloneTargetSummary =
             $"平台：{target.ProviderName}\n" +
             $"Repository：{target.Owner}/{target.Repository}\n" +
             $"網站類型：{(target.IsUserOrOrganizationSite ? "使用者／組織網站" : "專案網站")}\n" +
             $"建議 Pages 網址：{target.PagesUrl}\n" +
-            "本機沒有網站時，可把 GitHub 上的 Hexo 原始碼複製下來繼續編輯。";
+            "本機沒有網站時，可把遠端平台上的 Hexo 原始碼複製下來繼續編輯。";
     }
 
     [RelayCommand]
@@ -151,6 +195,7 @@ public partial class SetupViewModel : PageViewModelBase
                 AppendLog($"找到：{repo.Owner}/{repo.Repository} → {repo.PagesUrl}");
 
             var selected = repos[0];
+            SelectSetupProvider(RemoteGitProvider.GitHub, loadSettings: false);
             CloneRepositoryUrl = selected.CanonicalUrl ?? $"https://github.com/{selected.Owner}/{selected.Repository}";
             if (string.IsNullOrWhiteSpace(RepositoryUrl))
                 RepositoryUrl = CloneRepositoryUrl;
@@ -161,7 +206,7 @@ public partial class SetupViewModel : PageViewModelBase
     [RelayCommand]
     private async Task InspectRemoteSiteAsync()
     {
-        var target = GitHubService.ParseRepositoryTarget(CloneRepositoryUrl);
+        var target = ParseRepositoryTarget(CloneRepositoryUrl);
         if (!target.IsValid)
         {
             CloneTargetSummary = target.ErrorMessage;
@@ -187,7 +232,7 @@ public partial class SetupViewModel : PageViewModelBase
     [RelayCommand]
     private async Task CloneFromGitHubAsync()
     {
-        var target = GitHubService.ParseRepositoryTarget(CloneRepositoryUrl);
+        var target = ParseRepositoryTarget(CloneRepositoryUrl);
         if (!target.IsValid)
         {
             StatusMessage = target.ErrorMessage;
@@ -292,7 +337,7 @@ public partial class SetupViewModel : PageViewModelBase
         await RunStepAsync("建立 Git 遠端並推送 main…", async () =>
         {
             await _services.Git.WritePagesWorkflowAsync();
-            var result = await _services.Git.InitializeAndPushAsync(RepositoryUrl.Trim());
+            var result = await _services.Git.InitializeAndPushAsync(ResolveSetupRepositoryUrl());
             AppendLog(result.CombinedOutput);
             if (!result.Success) throw new InvalidOperationException("Git 初始化或推送失敗。請確認 gh auth login 與 repository 權限。");
             StatusMessage = "已推送 main。GitHub 會自動加入 Actions workflow；其他平台請在平台端設定 Pages/CI 或 deploy 分支。";
@@ -351,6 +396,56 @@ public partial class SetupViewModel : PageViewModelBase
     {
         _services.Server.OpenPreviewInBrowser();
         StatusMessage = "已開啟 " + _services.Server.PreviewUrl;
+    }
+
+    private GitHubRepositoryTarget ParseRepositoryTarget(string? input) =>
+        GitHubService.ParseRepositoryTarget(input, SelectedSetupProvider.Provider);
+
+    private void SelectSetupProvider(RemoteGitProvider provider, bool loadSettings)
+    {
+        if (provider is RemoteGitProvider.Unknown || provider == SelectedSetupProvider.Provider)
+            return;
+
+        _skipProviderSettingsLoad = !loadSettings;
+        SelectedSetupProvider = RemoteProviderOption.FromProvider(provider);
+    }
+
+    private void LoadSetupProviderSettings(RemoteGitProvider provider)
+    {
+        _loadingProviderSettings = true;
+        try
+        {
+            var settings = _services.Project.Settings.GetRemoteProviderSettings(provider);
+            CloneRepositoryUrl = settings.CloneRepositoryUrl ?? string.Empty;
+            RepositoryUrl = settings.RepositoryUrl ?? string.Empty;
+        }
+        finally
+        {
+            _loadingProviderSettings = false;
+        }
+
+        OnCloneRepositoryUrlChanged(CloneRepositoryUrl);
+    }
+
+    private void SaveSetupProviderSettings(RemoteGitProvider provider)
+    {
+        if (_loadingProviderSettings)
+            return;
+
+        var settings = _services.Project.Settings.GetRemoteProviderSettings(provider);
+        settings.CloneRepositoryUrl = CloneRepositoryUrl.Trim();
+        settings.RepositoryUrl = RepositoryUrl.Trim();
+        _services.Project.Settings.Save();
+    }
+
+    private string ResolveSetupRepositoryUrl()
+    {
+        var target = ParseRepositoryTarget(RepositoryUrl);
+        if (!target.IsValid)
+            throw new InvalidOperationException(target.ErrorMessage);
+
+        SaveSetupProviderSettings(SelectedSetupProvider.Provider);
+        return target.CanonicalUrl ?? RepositoryUrl.Trim();
     }
 
     private async Task<string?> ResolveClonePreferredPathAsync()
@@ -415,6 +510,3 @@ public partial class SetupViewModel : PageViewModelBase
             LogText = LogText[^60_000..];
     }
 }
-
-
-

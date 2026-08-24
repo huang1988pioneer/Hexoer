@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -20,9 +21,15 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     private CancellationTokenSource? _deploymentMonitorCts;
     private DeploymentVersionState? _lastDeploymentState;
     private string? _lastExpectedDeploymentId;
+    private bool _loadingProviderSettings;
+    private bool _skipProviderSettingsLoad;
 
     public override string Title => "多平台 Pages";
     public override string Icon => "☁";
+
+    public IReadOnlyList<RemoteProviderOption> RemoteProviders { get; } = RemoteProviderOption.All;
+    [ObservableProperty] public partial RemoteProviderOption SelectedRepositoryProvider { get; set; } =
+        RemoteProviderOption.FromProvider(RemoteGitProvider.GitHub);
 
     [ObservableProperty] public partial string GitStatus { get; set; } = string.Empty;
     [ObservableProperty] public partial string GhStatus { get; set; } = string.Empty;
@@ -49,23 +56,33 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     public DeployViewModel(ServiceHost services)
     {
         _services = services;
+        var provider = _services.Project.Settings.GetSelectedDeployProvider();
+        _loadingProviderSettings = true;
+        SelectedRepositoryProvider = RemoteProviderOption.FromProvider(provider);
+        _loadingProviderSettings = false;
+        LoadDeployProviderSettings(provider);
         _outputHandler = line => Dispatcher.UIThread.Post(() => AppendLog(line));
         _services.ProcessRunner.OutputReceived += _outputHandler;
     }
 
     partial void OnRepositoryUrlChanged(string value)
     {
-        var target = GitHubService.ParseRepositoryTarget(value);
+        var target = ParseRepositoryTarget(value);
         CanConnectRepository = target.IsValid;
         if (!target.IsValid)
         {
             RepositoryTargetSummary = string.IsNullOrWhiteSpace(value)
-                ? "貼上 GitHub、GitLab、Codeberg 或 Bitbucket repository 網址後，Hexoer 會先顯示目標與 Pages 網址。"
+                ? "選擇平台後，可貼上 repository 網址或輸入 owner/repo；各平台會分別保存。"
                 : target.ErrorMessage;
+            SaveDeployProviderSettings(SelectedRepositoryProvider.Provider);
             return;
         }
 
+        if (target.Provider != SelectedRepositoryProvider.Provider && target.Provider != RemoteGitProvider.Unknown)
+            SelectRepositoryProvider(target.Provider, loadSettings: false);
+
         RepoName = target.Repository!;
+        SaveDeployProviderSettings(SelectedRepositoryProvider.Provider);
         RepositoryTargetSummary =
             $"平台：{target.ProviderName}\n" +
             $"Repository：{target.Owner}/{target.Repository}\n" +
@@ -74,6 +91,28 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             $"建議 _config.yml：url = {SiteUrlFromTarget(target)}，root = {RootFromTarget(target)}";
     }
 
+    partial void OnSelectedRepositoryProviderChanged(RemoteProviderOption value)
+    {
+        if (_loadingProviderSettings)
+            return;
+
+        var provider = value.Provider;
+        _services.Project.Settings.SetSelectedDeployProvider(provider);
+        if (_skipProviderSettingsLoad)
+        {
+            _skipProviderSettingsLoad = false;
+            SaveDeployProviderSettings(provider);
+            return;
+        }
+
+        LoadDeployProviderSettings(provider);
+    }
+
+    partial void OnDeployerRepoUrlChanged(string value) =>
+        SaveDeployProviderSettings(SelectedRepositoryProvider.Provider);
+
+    partial void OnDeployerBranchChanged(string value) =>
+        SaveDeployProviderSettings(SelectedRepositoryProvider.Provider);
     public override async void OnNavigatedTo()
     {
         try
@@ -142,7 +181,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     private async Task ConnectExistingRepositoryAsync()
     {
         if (!RequireSite(out var site)) return;
-        var target = GitHubService.ParseRepositoryTarget(RepositoryUrl);
+        var target = ParseRepositoryTarget(RepositoryUrl);
         if (!target.IsValid)
         {
             StatusMessage = target.ErrorMessage;
@@ -228,7 +267,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             return;
         }
 
-        var existingTarget = GitHubService.ParseRepositoryTarget(RepoName);
+        var existingTarget = ParseRepositoryTarget(RepoName);
         if (existingTarget.IsValid)
         {
             RepositoryUrl = RepoName.Trim();
@@ -291,7 +330,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         if (string.IsNullOrWhiteSpace(info.RemoteUrl))
         {
             var candidate = !string.IsNullOrWhiteSpace(RepositoryUrl) ? RepositoryUrl : RepoName;
-            var target = GitHubService.ParseRepositoryTarget(candidate);
+            var target = ParseRepositoryTarget(candidate);
             if (target.IsValid)
             {
                 RepositoryUrl = candidate;
@@ -414,8 +453,9 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             IsBusy = true;
             StatusMessage = "寫入 deploy 設定並安裝 hexo-deployer-git…";
             await _services.GitHub.ConfigureDeployAsync(
-                DeployerRepoUrl.Trim(),
+                ResolveDeployRepoUrl(),
                 string.IsNullOrWhiteSpace(DeployerBranch) ? "gh-pages" : DeployerBranch.Trim());
+            SaveDeployProviderSettings(SelectedRepositoryProvider.Provider);
             StatusMessage = "Deploy 設定完成";
         }
         catch (Exception ex)
@@ -455,6 +495,55 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         }
     }
 
+    private GitHubRepositoryTarget ParseRepositoryTarget(string? input) =>
+        GitHubService.ParseRepositoryTarget(input, SelectedRepositoryProvider.Provider);
+
+    private void SelectRepositoryProvider(RemoteGitProvider provider, bool loadSettings)
+    {
+        if (provider is RemoteGitProvider.Unknown || provider == SelectedRepositoryProvider.Provider)
+            return;
+
+        _skipProviderSettingsLoad = !loadSettings;
+        SelectedRepositoryProvider = RemoteProviderOption.FromProvider(provider);
+    }
+
+    private void LoadDeployProviderSettings(RemoteGitProvider provider)
+    {
+        _loadingProviderSettings = true;
+        try
+        {
+            var settings = _services.Project.Settings.GetRemoteProviderSettings(provider);
+            RepositoryUrl = settings.RepositoryUrl ?? string.Empty;
+            DeployerRepoUrl = settings.DeployerRepoUrl ?? string.Empty;
+            DeployerBranch = string.IsNullOrWhiteSpace(settings.DeployerBranch) ? "gh-pages" : settings.DeployerBranch;
+        }
+        finally
+        {
+            _loadingProviderSettings = false;
+        }
+
+        OnRepositoryUrlChanged(RepositoryUrl);
+    }
+
+    private void SaveDeployProviderSettings(RemoteGitProvider provider)
+    {
+        if (_loadingProviderSettings)
+            return;
+
+        var settings = _services.Project.Settings.GetRemoteProviderSettings(provider);
+        settings.RepositoryUrl = RepositoryUrl.Trim();
+        settings.DeployerRepoUrl = DeployerRepoUrl.Trim();
+        settings.DeployerBranch = string.IsNullOrWhiteSpace(DeployerBranch) ? "gh-pages" : DeployerBranch.Trim();
+        _services.Project.Settings.Save();
+    }
+
+    private string ResolveDeployRepoUrl()
+    {
+        var target = ParseRepositoryTarget(DeployerRepoUrl);
+        return target.IsValid && !string.IsNullOrWhiteSpace(target.CanonicalUrl)
+            ? target.CanonicalUrl
+            : DeployerRepoUrl.Trim();
+    }
     public void Dispose()
     {
         _deploymentMonitorCts?.Cancel();
@@ -607,6 +696,3 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             LogText = LogText[^60_000..];
     }
 }
-
-
-

@@ -83,6 +83,26 @@ public sealed partial class GitHubService
         return InvalidTarget(
             "目前支援 GitHub、GitLab、Codeberg 與 Bitbucket repository URL 或 Pages 網址。");
     }
+    public static GitHubRepositoryTarget ParseRepositoryTarget(string? input, RemoteGitProvider defaultProvider)
+    {
+        var value = input?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+            return ParseRepositoryTarget(input);
+
+        if (defaultProvider is RemoteGitProvider.GitHub
+                or RemoteGitProvider.GitLab
+                or RemoteGitProvider.Codeberg
+                or RemoteGitProvider.Bitbucket
+            && !value.Contains("://", StringComparison.Ordinal)
+            && !GenericSshRemoteRegex().IsMatch(value)
+            && !LooksLikeKnownHostPath(value)
+            && !LooksLikeKnownPagesHost(value))
+        {
+            return FromProviderPath(defaultProvider, value);
+        }
+
+        return ParseRepositoryTarget(input);
+    }
     public async Task UpdateSiteUrlAsync(
         GitHubRepositoryTarget target,
         CancellationToken cancellationToken = default)
@@ -1048,9 +1068,3 @@ jobs:
     [GeneratedRegex(@"^(19|20)\d{2}$")]
     private static partial Regex YearSegmentRegex();
 }
-
-
-
-
-
-

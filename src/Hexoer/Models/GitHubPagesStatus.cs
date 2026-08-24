@@ -56,6 +56,30 @@ public enum RemoteGitProvider
     Bitbucket
 }
 
+public sealed record RemoteProviderOption(RemoteGitProvider Provider, string Label, string Host, string Hint)
+{
+    public static IReadOnlyList<RemoteProviderOption> All { get; } =
+    [
+        new(RemoteGitProvider.GitHub, "GitHub", "github.com", "可輸入 owner/repo 或完整 GitHub repository / Pages URL。"),
+        new(RemoteGitProvider.GitLab, "GitLab", "gitlab.com", "可輸入 group/project 或完整 GitLab repository / Pages URL。"),
+        new(RemoteGitProvider.Codeberg, "Codeberg", "codeberg.org", "可輸入 user/repo 或完整 Codeberg repository / Pages URL。"),
+        new(RemoteGitProvider.Bitbucket, "Bitbucket", "bitbucket.org", "可輸入 workspace/repo 或完整 Bitbucket repository / Pages URL。")
+    ];
+
+    public static RemoteProviderOption FromProvider(RemoteGitProvider provider)
+    {
+        foreach (var option in All)
+        {
+            if (option.Provider == provider)
+                return option;
+        }
+
+        return All[0];
+    }
+
+    public override string ToString() => Label;
+}
+
 public sealed class RemoteHexoSiteInfo
 {
     public bool Success { get; init; }

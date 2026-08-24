@@ -41,9 +41,17 @@
             </Border>
           </Grid>
 
-          <TextBox Text="{Binding CloneRepositoryUrl}"
-                   PlaceholderText="https://github.com/USER/site、https://gitlab.com/GROUP/site、https://codeberg.org/USER/site、https://bitbucket.org/WORKSPACE/site"
-                   FontFamily="Consolas, Cascadia Mono, monospace" />
+          <Grid ColumnDefinitions="170,*" ColumnSpacing="8">
+            <ComboBox ItemsSource="{Binding RemoteProviders}"
+                      SelectedItem="{Binding SelectedSetupProvider}"
+                      ToolTip.Tip="選擇 Git 平台；各平台會分別保存 Clone URL。" />
+            <TextBox Grid.Column="1"
+                     Text="{Binding CloneRepositoryUrl}"
+                     PlaceholderText="owner/repo 或完整 repository / Pages URL"
+                     FontFamily="Consolas, Cascadia Mono, monospace" />
+          </Grid>
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="{Binding SelectedSetupProvider.Hint}" />
 
           <Border Background="#101720" BorderBrush="#2A3648" BorderThickness="1"
                   CornerRadius="8" Padding="12">
@@ -103,7 +111,13 @@
           <TextBlock Text="{Binding GitIdentityStatus}" TextWrapping="Wrap" />
           <TextBlock Text="{Binding GitHubStatus}" />
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <TextBox Text="{Binding RepositoryUrl}" PlaceholderText="https://github.com/USER/site.git 或 https://gitlab.com/GROUP/site.git" />
+            <Grid ColumnDefinitions="170,*" ColumnSpacing="8">
+              <ComboBox ItemsSource="{Binding RemoteProviders}"
+                        SelectedItem="{Binding SelectedSetupProvider}"
+                        ToolTip.Tip="切換平台時，Git remote URL 也會分別保存。" />
+              <TextBox Grid.Column="1" Text="{Binding RepositoryUrl}"
+                       PlaceholderText="owner/repo 或完整 repository URL" />
+            </Grid>
             <Button Grid.Column="1" Classes="accent" Content="建立 Git + Pages 工作流 + 推送" Command="{Binding InitializeGitHubCommand}" IsEnabled="{Binding !IsBusy}" />
           </Grid>
           <TextBlock Classes="muted" TextWrapping="Wrap" Text="GitHub 會自動加入 Actions workflow；GitLab、Codeberg、Bitbucket 請在平台端設定 Pages/CI 或 deploy 分支。" />
