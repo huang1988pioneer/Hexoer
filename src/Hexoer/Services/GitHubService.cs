@@ -496,7 +496,11 @@ public/
             return await EnablePagesFromActionsAsync(sitePath, cancellationToken).ConfigureAwait(false);
         }
 
-        return CommandResult.Ok($"已推送到 {target.ProviderName}。若要上線 Pages，請在 {target.ProviderName} 設定 Pages/CI，或使用 hexo-deployer-git 部署分支。");
+        return target.Provider switch
+        {
+            RemoteGitProvider.GitLab => CommandResult.Ok("已推送到 GitLab，並已加入 GitLab Pages CI。請到 GitLab Pipelines 確認 create-pages job 完成；完成後 Pages 網站會解除 404。"),
+            _ => CommandResult.Ok($"已推送到 {target.ProviderName}。若要上線 Pages，請在 {target.ProviderName} 設定 Pages/CI，或使用 hexo-deployer-git 部署分支。")
+        };
     }
     public async Task<CommandResult> PushAsync(
         string sitePath,
@@ -543,7 +547,11 @@ public/
             return CommandResult.Fail("找不到 remote（origin）。請先建立或連結 repository。");
 
         if (info.Provider != RemoteGitProvider.GitHub)
-            return CommandResult.Ok($"已推送到 {ProviderName(info.Provider)}。Pages 啟用與 CI 設定需在該平台完成。");
+        {
+            return info.Provider == RemoteGitProvider.GitLab
+                ? CommandResult.Ok("已推送到 GitLab，GitLab Pages 會由 .gitlab-ci.yml 的 create-pages job 發布 public/。")
+                : CommandResult.Ok($"已推送到 {ProviderName(info.Provider)}。Pages 啟用與 CI 設定需在該平台完成。");
+        }
 
         var permission = await GhAsync(
             $"api repos/{info.Owner}/{info.Repo} --jq .permissions.admin",
