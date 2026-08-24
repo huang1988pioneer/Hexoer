@@ -137,6 +137,7 @@ public sealed partial class GitHubService
             {
                 RemoteGitProvider.GitLab => "GitLab 不使用 GitHub CLI；push 會使用本機 Git Credential Manager 或 SSH。若瀏覽器帳號是 Owner 但 push 仍 403，請清除 Windows 認證管理員中的 git:https://gitlab.com，或改用有 write_repository 權限的 Personal Access Token / SSH key。",
                 RemoteGitProvider.Bitbucket => "Bitbucket 不使用 GitHub CLI；HTTPS push 會使用本機 Git Credential Manager。請確認受邀使用者已接受 Bitbucket 使用者或群組邀請，且該帳號具備 repository/workspace write 權限；即使 Bitbucket 畫面顯示 Admin，push 仍取決於本機 credential。若瀏覽器已登入但 push 失敗，請清除 Windows 認證管理員中的 git:https://bitbucket.org，並改用 Bitbucket App password 或 SSH key。",
+                RemoteGitProvider.Codeberg => "Codeberg 不使用 GitHub CLI；push 會使用本機 Git Credential Manager 或 SSH。若 HTTPS push 顯示 Credentials are incorrect or have expired，請清除 Windows 認證管理員中的 git:https://codeberg.org，重新輸入 Codeberg 使用者名稱與 Access Token，或改用 SSH key。",
                 _ => $"{target.ProviderName} 權限會在 git push 時由 Git Credential Manager 或 SSH 驗證。"
             };
             return (true, authHint);
@@ -499,6 +500,7 @@ public/
         return target.Provider switch
         {
             RemoteGitProvider.GitLab => CommandResult.Ok("已推送到 GitLab，並已加入 GitLab Pages CI。請到 GitLab Pipelines 確認 create-pages job 完成；完成後 Pages 網站會解除 404。"),
+            RemoteGitProvider.Codeberg => CommandResult.Ok("已推送到 Codeberg。Codeberg Pages 需要將靜態輸出部署到 pages branch，並在 repository Webhooks 設定 codeberg.page 目標；若使用 Hexo，建議用下方 hexo-deployer-git 將 public/ 推到 pages branch，或改用 Forgejo Actions。"),
             _ => CommandResult.Ok($"已推送到 {target.ProviderName}。若要上線 Pages，請在 {target.ProviderName} 設定 Pages/CI，或使用 hexo-deployer-git 部署分支。")
         };
     }
@@ -550,7 +552,9 @@ public/
         {
             return info.Provider == RemoteGitProvider.GitLab
                 ? CommandResult.Ok("已推送到 GitLab，GitLab Pages 會由 .gitlab-ci.yml 的 create-pages job 發布 public/。")
-                : CommandResult.Ok($"已推送到 {ProviderName(info.Provider)}。Pages 啟用與 CI 設定需在該平台完成。");
+                : info.Provider == RemoteGitProvider.Codeberg
+                    ? CommandResult.Ok("已推送到 Codeberg。Codeberg Pages 需發布到 pages branch，並設定 Webhook 或 Forgejo Actions 才會更新 codeberg.page 網站。")
+                    : CommandResult.Ok($"已推送到 {ProviderName(info.Provider)}。Pages 啟用與 CI 設定需在該平台完成。");
         }
 
         var permission = await GhAsync(
@@ -953,6 +957,13 @@ public/
                 result.StandardOutput);
         }
 
+        if (ContainsAny(output, "codeberg.org") && ContainsAny(output, "Authentication failed", "Credentials are incorrect or have expired", "could not read Username", "Invalid username or password", "403", "Forbidden"))
+        {
+            return CommandResult.Fail(
+                "推送失敗：Codeberg HTTPS 認證失敗。請在 Windows 認證管理員清除 git:https://codeberg.org，重新 push 時使用 Codeberg 使用者名稱與 Access Token；或改用 SSH remote 與 SSH key。Codeberg Pages 的網站內容通常需部署到 pages branch。\n" + output,
+                result.ExitCode,
+                result.StandardOutput);
+        }
         if (ContainsAny(output, "bitbucket.org") && ContainsAny(output, "Authentication failed", "HTTP Basic: Access denied", "could not read Username", "Invalid username or password", "403", "Forbidden"))
         {
             return CommandResult.Fail(
