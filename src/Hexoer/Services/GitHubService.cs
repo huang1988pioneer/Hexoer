@@ -250,15 +250,38 @@ public/
         if (info.Provider != RemoteGitProvider.Unknown && info.Provider != RemoteGitProvider.GitHub)
             return;
 
-        var dir = Path.Combine(sitePath, ".github", "workflows");
-        Directory.CreateDirectory(dir);
-        var hexoWorkflow = Path.Combine(dir, "hexo.yml");
-        var legacyWorkflow = Path.Combine(dir, "pages.yml");
-        if (File.Exists(hexoWorkflow) || File.Exists(legacyWorkflow))
-            return;
-
-        await File.WriteAllTextAsync(hexoWorkflow, DefaultHexoPagesWorkflow, cancellationToken)
+        await EnsurePagesWorkflowAsync(sitePath, RemoteGitProvider.GitHub, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async Task EnsurePagesWorkflowAsync(
+        string sitePath,
+        RemoteGitProvider provider,
+        CancellationToken cancellationToken = default)
+    {
+        switch (provider)
+        {
+            case RemoteGitProvider.GitHub:
+                var dir = Path.Combine(sitePath, ".github", "workflows");
+                Directory.CreateDirectory(dir);
+                var hexoWorkflow = Path.Combine(dir, "hexo.yml");
+                var legacyWorkflow = Path.Combine(dir, "pages.yml");
+                if (File.Exists(hexoWorkflow) || File.Exists(legacyWorkflow))
+                    return;
+
+                await File.WriteAllTextAsync(hexoWorkflow, DefaultHexoPagesWorkflow, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+
+            case RemoteGitProvider.GitLab:
+                var gitLabCi = Path.Combine(sitePath, ".gitlab-ci.yml");
+                if (File.Exists(gitLabCi))
+                    return;
+
+                await File.WriteAllTextAsync(gitLabCi, DefaultGitLabPagesCi, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+        }
     }
 
     public async Task<CommandResult> CommitAllAsync(
@@ -432,11 +455,13 @@ public/
 
         FlattenNestedThemeGitRepos(sitePath, progress);
 
-        progress?.Report(target.Provider == RemoteGitProvider.GitHub
-            ? "加入 GitHub Actions workflow 並提交網站…"
-            : "提交網站變更…");
-        if (target.Provider == RemoteGitProvider.GitHub)
-            await EnsureGitHubActionsWorkflowAsync(sitePath, cancellationToken).ConfigureAwait(false);
+        progress?.Report(target.Provider switch
+        {
+            RemoteGitProvider.GitHub => "加入 GitHub Actions workflow 並提交網站…",
+            RemoteGitProvider.GitLab => "加入 GitLab Pages CI 並提交網站…",
+            _ => "提交網站變更…"
+        });
+        await EnsurePagesWorkflowAsync(sitePath, target.Provider, cancellationToken).ConfigureAwait(false);
 
         var markerError = await PrepareDeploymentMarkerAsync(sitePath, progress, cancellationToken)
             .ConfigureAwait(false);
@@ -481,7 +506,8 @@ public/
     {
         FlattenNestedThemeGitRepos(sitePath, progress);
         progress?.Report("提交變更…");
-        await EnsureGitHubActionsWorkflowAsync(sitePath, cancellationToken).ConfigureAwait(false);
+        var info = await GetInfoAsync(sitePath, cancellationToken).ConfigureAwait(false);
+        await EnsurePagesWorkflowAsync(sitePath, info.Provider, cancellationToken).ConfigureAwait(false);
         var markerError = await PrepareDeploymentMarkerAsync(sitePath, progress, cancellationToken)
             .ConfigureAwait(false);
         if (markerError is not null) return markerError;
@@ -1169,6 +1195,28 @@ public/
         IsValid = false,
         ErrorMessage = message
     };
+    private const string DefaultGitLabPagesCi = """
+default:
+  image: node:24-alpine
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+
+create-pages:
+  stage: deploy
+  script:
+    - if [ -f package-lock.json ]; then npm ci; else npm install; fi
+    - npx hexo generate
+  pages: true
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+""";
+
     private const string DefaultHexoPagesWorkflow = """
 # Build and deploy a Hexo site to GitHub Pages
 name: Deploy Hexo site to Pages

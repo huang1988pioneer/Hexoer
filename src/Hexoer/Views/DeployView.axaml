@@ -7,7 +7,7 @@
     <StackPanel Spacing="16" Margin="8" MaxWidth="980">
       <TextBlock Classes="h1" Text="多平台 Pages" />
       <TextBlock Classes="muted" TextWrapping="Wrap"
-                 Text="將 Hexo 網站推上 GitHub、GitLab、Codeberg 或 Bitbucket。GitHub 可自動加入 Actions workflow 並查詢 Pages 狀態；其他平台會使用標準 git push，Pages/CI 請在平台端設定。" />
+                 Text="將 Hexo 網站推上 GitHub、GitLab、Codeberg 或 Bitbucket。GitHub 會自動加入 Actions workflow，GitLab 會自動加入 Pages CI；Codeberg、Bitbucket 會使用標準 git push，Pages/CI 請在平台端設定。" />
 
       <Border Classes="card">
         <StackPanel Spacing="8">
@@ -134,7 +134,7 @@
                     IsEnabled="{Binding !IsBusy}" />
           </StackPanel>
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="GitHub 流程：hexo generate → 寫入 .github/workflows/hexo.yml → git commit/push → GitHub Actions 部署 Pages。GitLab、Codeberg、Bitbucket 會提交並推送到 origin，請在平台端設定 Pages/CI 或 deploy 分支。" />
+                     Text="GitHub 流程會寫入 .github/workflows/hexo.yml；GitLab 流程會寫入 .gitlab-ci.yml 並由 Pages CI 發布 public/。Codeberg、Bitbucket 會提交並推送到 origin，請在平台端設定 Pages/CI 或 deploy 分支。" />
         </StackPanel>
       </Border>
 

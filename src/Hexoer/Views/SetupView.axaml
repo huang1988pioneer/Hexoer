@@ -120,7 +120,7 @@
             </Grid>
             <Button Grid.Column="1" Classes="accent" Content="建立 Git + Pages 工作流 + 推送" Command="{Binding InitializeGitHubCommand}" IsEnabled="{Binding !IsBusy}" />
           </Grid>
-          <TextBlock Classes="muted" TextWrapping="Wrap" Text="GitHub 會自動加入 Actions workflow；GitLab、Codeberg、Bitbucket 請在平台端設定 Pages/CI 或 deploy 分支。" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="GitHub 會自動加入 Actions workflow；GitLab 會自動加入 Pages CI；Codeberg、Bitbucket 請在平台端設定 Pages/CI 或 deploy 分支。" />
         </StackPanel>
       </Border>
 

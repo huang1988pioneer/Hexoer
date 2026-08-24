@@ -12,12 +12,12 @@
 .EXAMPLE
   .\scripts\build-installer.ps1
   .\scripts\build-installer.ps1 -SingleFile
-  .\scripts\build-installer.ps1 -Version 1.1.3
+  .\scripts\build-installer.ps1 -Version 1.1.4
 #>
 param(
     [switch]$SingleFile,
     [switch]$SkipPublish,
-    [string]$Version = "1.1.3"
+    [string]$Version = "1.1.4"
 )
 
 $ErrorActionPreference = "Stop"
