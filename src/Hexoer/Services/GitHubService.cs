@@ -425,20 +425,9 @@ public/
         }
         else if (remoteHasCommit && localHead.Success)
         {
-            progress?.Report($"合併遠端 {remoteBranch}（允許初始 README 歷史）…");
-            var merge = await GitAsync(
-                $"merge \"origin/{remoteBranch}\" --allow-unrelated-histories --no-edit",
-                sitePath,
-                60_000,
-                cancellationToken).ConfigureAwait(false);
-            if (!merge.Success)
-            {
-                await GitAsync("merge --abort", sitePath, 15_000, cancellationToken).ConfigureAwait(false);
-                return CommandResult.Fail(
-                    $"遠端內容與本機內容發生合併衝突，已中止合併且未推送。\n{merge.CombinedOutput}",
-                    merge.ExitCode,
-                    merge.StandardOutput);
-            }
+            var merge = await MergeOriginBranchAsync(sitePath, remoteBranch, progress, cancellationToken)
+                .ConfigureAwait(false);
+            if (!merge.Success) return merge;
         }
 
         FlattenNestedThemeGitRepos(sitePath, progress);
@@ -790,6 +779,106 @@ public/
         }
     }
 
+    private async Task<CommandResult> MergeOriginBranchAsync(
+        string sitePath,
+        string branch,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken)
+    {
+        progress?.Report($"合併遠端 {branch}（允許初始 README 歷史）…");
+        var merge = await GitAsync(
+            $"merge \"origin/{branch}\" --allow-unrelated-histories --no-edit",
+            sitePath,
+            60_000,
+            cancellationToken).ConfigureAwait(false);
+        if (merge.Success) return merge;
+
+        var readmeResolution = await TryResolveReadmeOnlyMergeConflictAsync(
+            sitePath,
+            merge,
+            progress,
+            cancellationToken).ConfigureAwait(false);
+        if (readmeResolution is not null) return readmeResolution;
+
+        await GitAsync("merge --abort", sitePath, 15_000, cancellationToken).ConfigureAwait(false);
+        return CommandResult.Fail(
+            $"遠端內容與本機內容發生合併衝突，已中止合併且未推送。\n{merge.CombinedOutput}",
+            merge.ExitCode,
+            merge.StandardOutput);
+    }
+
+    private async Task<CommandResult?> TryResolveReadmeOnlyMergeConflictAsync(
+        string sitePath,
+        CommandResult mergeResult,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (!ContainsAny(mergeResult.CombinedOutput, "README.md"))
+            return null;
+
+        var conflicts = await GitAsync("diff --name-only --diff-filter=U", sitePath, 15_000, cancellationToken)
+            .ConfigureAwait(false);
+        if (!conflicts.Success)
+            return null;
+
+        var conflictedFiles = conflicts.StandardOutput
+            .Replace("\r", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(static line => line.Trim())
+            .Where(static line => line.Length > 0)
+            .ToArray();
+        if (conflictedFiles.Length != 1 || !conflictedFiles[0].Equals("README.md", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        progress?.Report("偵測到平台初始 README 與本機 README 衝突；保留遠端 README，並將本機內容另存為 README.hexo.md…");
+        string? backupFileName = null;
+        var localReadme = await GitAsync("show HEAD:README.md", sitePath, 15_000, cancellationToken)
+            .ConfigureAwait(false);
+        if (localReadme.Success && !string.IsNullOrWhiteSpace(localReadme.StandardOutput))
+        {
+            var backupPath = GetAvailableReadmeBackupPath(sitePath);
+            await File.WriteAllTextAsync(backupPath, localReadme.StandardOutput, cancellationToken)
+                .ConfigureAwait(false);
+            backupFileName = Path.GetFileName(backupPath);
+        }
+
+        var checkoutRemoteReadme = await GitAsync("checkout --theirs -- README.md", sitePath, 15_000, cancellationToken)
+            .ConfigureAwait(false);
+        if (!checkoutRemoteReadme.Success)
+            return null;
+
+        var addArguments = backupFileName is null
+            ? "add -- README.md"
+            : $"add -- README.md \"{backupFileName}\"";
+        var add = await GitAsync(addArguments, sitePath, 15_000, cancellationToken)
+            .ConfigureAwait(false);
+        if (!add.Success)
+            return null;
+
+        var commit = await GitAsync("commit --no-edit", sitePath, 60_000, cancellationToken)
+            .ConfigureAwait(false);
+        return commit.Success
+            ? commit
+            : CommandResult.Fail(
+                $"已處理 README 衝突，但無法完成合併提交。\n{commit.CombinedOutput}",
+                commit.ExitCode,
+                commit.StandardOutput);
+    }
+
+    private static string GetAvailableReadmeBackupPath(string sitePath)
+    {
+        var first = Path.Combine(sitePath, "README.hexo.md");
+        if (!File.Exists(first)) return first;
+
+        for (var index = 2; index < 100; index++)
+        {
+            var candidate = Path.Combine(sitePath, $"README.hexo-{index}.md");
+            if (!File.Exists(candidate)) return candidate;
+        }
+
+        return Path.Combine(sitePath, $"README.hexo-{DateTimeOffset.Now:yyyyMMddHHmmss}.md");
+    }
+
     private async Task<CommandResult> SyncOriginBranchBeforePushAsync(
         string sitePath,
         string branch,
@@ -804,18 +893,8 @@ public/
             .ConfigureAwait(false);
         if (!fetch.Success) return ExplainGitFailure(fetch);
 
-        var merge = await GitAsync(
-            $"merge \"origin/{branch}\" --allow-unrelated-histories --no-edit",
-            sitePath,
-            60_000,
-            cancellationToken).ConfigureAwait(false);
-        if (merge.Success) return merge;
-
-        await GitAsync("merge --abort", sitePath, 15_000, cancellationToken).ConfigureAwait(false);
-        return CommandResult.Fail(
-            $"遠端內容與本機內容發生合併衝突，已中止合併且未推送。\n{merge.CombinedOutput}",
-            merge.ExitCode,
-            merge.StandardOutput);
+        return await MergeOriginBranchAsync(sitePath, branch, progress, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static CommandResult ExplainGitFailure(CommandResult result)

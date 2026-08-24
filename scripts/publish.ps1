@@ -11,11 +11,11 @@
   5) Optionally create or update a GitHub release with gh
 
 .EXAMPLE
-  .\scripts\publish.ps1 -Version 1.1.2 -Runtime win-x64
-  .\scripts\publish.ps1 -Version 1.1.2 -SingleFile -CreateGitHubRelease
+  .\scripts\publish.ps1 -Version 1.1.3 -Runtime win-x64
+  .\scripts\publish.ps1 -Version 1.1.3 -SingleFile -CreateGitHubRelease
 #>
 param(
-    [string]$Version = "1.1.2",
+    [string]$Version = "1.1.3",
     [string]$Runtime = "win-x64",
     [switch]$SingleFile,
     [switch]$SkipInstaller,
