@@ -5,9 +5,9 @@
              x:DataType="vm:DeployViewModel">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="16" Margin="8" MaxWidth="980">
-      <TextBlock Classes="h1" Text="GitHub Pages" />
+      <TextBlock Classes="h1" Text="多平台 Pages" />
       <TextBlock Classes="muted" TextWrapping="Wrap"
-                 Text="將 Hexo 網站推上 GitHub，以 GitHub Actions 部署 Pages，並查詢上線狀態。推薦連結既有的使用者網站 repository，例如 https://github.com/engdictatorf/engdictatorf.github.io。" />
+                 Text="將 Hexo 網站推上 GitHub、GitLab、Codeberg 或 Bitbucket。GitHub 可自動加入 Actions workflow 並查詢 Pages 狀態；其他平台會使用標準 git push，Pages/CI 請在平台端設定。" />
 
       <Border Classes="card">
         <StackPanel Spacing="8">
@@ -26,7 +26,7 @@
         <StackPanel Spacing="12">
           <Grid ColumnDefinitions="*,Auto">
             <StackPanel Spacing="3">
-              <TextBlock Classes="h2" Text="連結既有 GitHub Repository" />
+              <TextBlock Classes="h2" Text="連結既有 Git Repository" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
                          Text="貼上 repository 網址，Hexoer 會辨識 Pages 類型、同步 _config.yml 的 url / root，安全合併遠端內容後部署。" />
             </StackPanel>
@@ -36,7 +36,7 @@
           </Grid>
 
           <TextBox Text="{Binding RepositoryUrl}"
-                   PlaceholderText="https://github.com/engdictatorf/engdictatorf.github.io"
+                   PlaceholderText="https://github.com/user/site 或 https://gitlab.com/group/site"
                    FontFamily="Consolas, Cascadia Mono, monospace" />
 
           <Border Background="#101720" BorderBrush="#2A3648" BorderThickness="1"
@@ -69,7 +69,7 @@
         </Border>
         <Border Classes="card">
           <StackPanel Spacing="8">
-            <TextBlock Classes="h2" Text="GitHub Pages 狀態" />
+            <TextBlock Classes="h2" Text="Pages 狀態" />
             <TextBlock Text="{Binding PagesSummary}" Classes="muted" TextWrapping="Wrap" />
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Button Content="查詢 Pages 狀態" Command="{Binding RefreshPagesStatusCommand}"
@@ -119,14 +119,14 @@
             <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding CommitMessage}" />
           </Grid>
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="建立新 Repo + 推送 + 啟用 Pages" Classes="accent"
+            <Button Content="建立 GitHub Repo + 推送 + 啟用 Pages" Classes="accent"
                     Command="{Binding CreateAndDeployCommand}"
                     IsEnabled="{Binding !IsBusy}" />
             <Button Content="建置、提交並推送更新" Command="{Binding PushCommand}"
                     IsEnabled="{Binding !IsBusy}" />
           </StackPanel>
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="流程：本機 hexo generate → 寫入 .github/workflows/hexo.yml → git commit/push → GitHub Actions 建置並部署到 GitHub Pages。建置失敗時不會推送；請先 gh auth login。" />
+                     Text="GitHub 流程：hexo generate → 寫入 .github/workflows/hexo.yml → git commit/push → GitHub Actions 部署 Pages。GitLab、Codeberg、Bitbucket 會提交並推送到 origin，請在平台端設定 Pages/CI 或 deploy 分支。" />
         </StackPanel>
       </Border>
 
@@ -136,7 +136,7 @@
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="舊流程。新站請優先使用上方的 GitHub Actions。若你仍使用 hexo-deployer-git，可在此寫入 _config.yml 的 deploy 區塊。" />
           <TextBox Text="{Binding DeployerRepoUrl}"
-                   PlaceholderText="https://github.com/engdictatorf/engdictatorf.github.io.git" />
+                   PlaceholderText="https://github.com/user/site 或 https://gitlab.com/group/site.git" />
           <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
             <TextBox Text="{Binding DeployerBranch}" PlaceholderText="branch（預設 gh-pages）" />
             <Button Grid.Column="1" Content="寫入設定 + 安裝 deployer"
@@ -162,3 +162,5 @@
     </StackPanel>
   </ScrollViewer>
 </UserControl>
+
+

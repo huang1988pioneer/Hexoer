@@ -35,33 +35,54 @@ public sealed partial class GitHubService
     {
         var value = input?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(value))
-            return InvalidTarget("請貼上 GitHub repository 網址。");
+            return InvalidTarget("請貼上 GitHub、GitLab、Codeberg 或 Bitbucket repository / Pages 網址。");
 
-        var ssh = GitHubSshRemoteRegex().Match(value);
+        var ssh = GenericSshRemoteRegex().Match(value);
         if (ssh.Success)
-            return FromOwnerRepo(ssh.Groups["owner"].Value, ssh.Groups["repo"].Value);
+        {
+            var sshProvider = ProviderFromHost(ssh.Groups["host"].Value);
+            if (sshProvider == RemoteGitProvider.Unknown)
+                return InvalidTarget("目前支援 GitHub、GitLab、Codeberg 與 Bitbucket repository URL。");
+            return FromProviderPath(sshProvider, ssh.Groups["path"].Value);
+        }
 
         if (!value.Contains("://", StringComparison.Ordinal))
         {
-            value = value.StartsWith("github.com/", StringComparison.OrdinalIgnoreCase)
-                ? $"https://{value}"
-                : $"https://github.com/{value.TrimStart('/')}";
+            if (LooksLikeKnownHostPath(value) || LooksLikeKnownPagesHost(value))
+            {
+                value = $"https://{value}";
+            }
+            else
+            {
+                value = $"https://github.com/{value.TrimStart('/')}";
+            }
         }
 
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
-            || !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-            || !uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
+            || (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                && !uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
         {
-            return InvalidTarget("僅支援 https://github.com/owner/repository 或 git@github.com:owner/repository.git。");
+            return InvalidTarget(
+                "僅支援 HTTPS repository URL、git@host:owner/repository.git，或 GitHub/GitLab/Codeberg/Bitbucket Pages 網址。");
         }
 
-        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (segments.Length != 2)
-            return InvalidTarget("網址必須指向 repository 首頁，不可包含 issues、settings 等子路徑。");
+        var provider = ProviderFromHost(uri.Host);
+        if (provider != RemoteGitProvider.Unknown)
+        {
+            var repoPath = uri.AbsolutePath.Trim('/');
+            if (string.IsNullOrWhiteSpace(repoPath))
+                return InvalidTarget("網址必須指向 repository，例如 https://github.com/owner/repository。");
 
-        return FromOwnerRepo(Uri.UnescapeDataString(segments[0]), Uri.UnescapeDataString(segments[1]));
+            return FromProviderPath(provider, repoPath);
+        }
+
+        var pagesTarget = FromPagesUri(uri);
+        if (pagesTarget.IsValid)
+            return pagesTarget;
+
+        return InvalidTarget(
+            "目前支援 GitHub、GitLab、Codeberg 與 Bitbucket repository URL 或 Pages 網址。");
     }
-
     public async Task UpdateSiteUrlAsync(
         GitHubRepositoryTarget target,
         CancellationToken cancellationToken = default)
@@ -89,6 +110,11 @@ public sealed partial class GitHubService
     {
         if (!target.IsValid || string.IsNullOrWhiteSpace(target.Owner) || string.IsNullOrWhiteSpace(target.Repository))
             return (false, target.ErrorMessage);
+
+        if (target.Provider != RemoteGitProvider.GitHub)
+        {
+            return (true, $"{target.ProviderName} 權限會在 git push 時由 Git Credential Manager 或 SSH 驗證。");
+        }
 
         var result = await GhAsync(
             $"api repos/{target.Owner}/{target.Repository} --jq .permissions.push",
@@ -133,9 +159,13 @@ public sealed partial class GitHubService
         if (remote.Success)
         {
             data.RemoteUrl = remote.StandardOutput.Trim();
-            var (owner, repo) = ParseGitHubRemote(data.RemoteUrl);
-            data.Owner = owner;
-            data.Repo = repo;
+            var target = ParseRepositoryTarget(data.RemoteUrl);
+            if (target.IsValid)
+            {
+                data.Provider = target.Provider;
+                data.Owner = target.Owner;
+                data.Repo = target.Repository;
+            }
         }
 
         var auth = await GhAsync("auth status", sitePath, 15_000, cancellationToken).ConfigureAwait(false);
@@ -148,7 +178,6 @@ public sealed partial class GitHubService
 
         return data;
     }
-
     public async Task<CommandResult> InitRepoAsync(string sitePath, CancellationToken cancellationToken = default)
     {
         if (!Directory.Exists(Path.Combine(sitePath, ".git")))
@@ -191,6 +220,10 @@ public/
         string sitePath,
         CancellationToken cancellationToken = default)
     {
+        var info = await GetInfoAsync(sitePath, cancellationToken).ConfigureAwait(false);
+        if (info.Provider != RemoteGitProvider.Unknown && info.Provider != RemoteGitProvider.GitHub)
+            return;
+
         var dir = Path.Combine(sitePath, ".github", "workflows");
         Directory.CreateDirectory(dir);
         var hexoWorkflow = Path.Combine(dir, "hexo.yml");
@@ -303,11 +336,11 @@ public/
             .ConfigureAwait(false);
         if (remote.Success)
         {
-            var (existingOwner, existingRepository) = ParseGitHubRemote(remote.StandardOutput.Trim());
-            if (string.IsNullOrWhiteSpace(existingOwner)
-                || string.IsNullOrWhiteSpace(existingRepository)
-                || !existingOwner.Equals(target.Owner, StringComparison.OrdinalIgnoreCase)
-                || !existingRepository.Equals(target.Repository, StringComparison.OrdinalIgnoreCase))
+            var existingTarget = ParseRepositoryTarget(remote.StandardOutput.Trim());
+            if (!existingTarget.IsValid
+                || existingTarget.Provider != target.Provider
+                || !string.Equals(existingTarget.Owner, target.Owner, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(existingTarget.Repository, target.Repository, StringComparison.OrdinalIgnoreCase))
             {
                 return CommandResult.Fail(
                     $"本機 origin 已指向其他 repository：{remote.StandardOutput.Trim()}。為避免推錯位置，Hexoer 未修改 origin。");
@@ -315,7 +348,7 @@ public/
         }
         else
         {
-            progress?.Report($"連結 origin：{target.Owner}/{target.Repository}…");
+            progress?.Report($"連結 origin：{target.ProviderName} {target.Owner}/{target.Repository}…");
             var addRemote = await GitAsync(
                 $"remote add origin \"{target.CanonicalUrl}\"",
                 sitePath,
@@ -378,15 +411,19 @@ public/
 
         FlattenNestedThemeGitRepos(sitePath, progress);
 
-        progress?.Report("加入 GitHub Actions workflow 並提交網站…");
-        await EnsureGitHubActionsWorkflowAsync(sitePath, cancellationToken).ConfigureAwait(false);
+        progress?.Report(target.Provider == RemoteGitProvider.GitHub
+            ? "加入 GitHub Actions workflow 並提交網站…"
+            : "提交網站變更…");
+        if (target.Provider == RemoteGitProvider.GitHub)
+            await EnsureGitHubActionsWorkflowAsync(sitePath, cancellationToken).ConfigureAwait(false);
+
         var markerError = await PrepareDeploymentMarkerAsync(sitePath, progress, cancellationToken)
             .ConfigureAwait(false);
         if (markerError is not null) return markerError;
         var commit = await CommitAllAsync(sitePath, commitMessage, cancellationToken).ConfigureAwait(false);
         if (!commit.Success) return commit;
 
-        progress?.Report($"推送到 {target.Owner}/{target.Repository}…");
+        progress?.Report($"推送到 {target.ProviderName} {target.Owner}/{target.Repository}…");
         var push = await GitAsync(
             $"push -u origin HEAD:\"{remoteBranch}\"",
             sitePath,
@@ -394,10 +431,14 @@ public/
             cancellationToken).ConfigureAwait(false);
         if (!push.Success) return push;
 
-        progress?.Report("啟用 GitHub Pages（Actions）…");
-        return await EnablePagesFromActionsAsync(sitePath, cancellationToken).ConfigureAwait(false);
-    }
+        if (target.Provider == RemoteGitProvider.GitHub)
+        {
+            progress?.Report("啟用 GitHub Pages（Actions）…");
+            return await EnablePagesFromActionsAsync(sitePath, cancellationToken).ConfigureAwait(false);
+        }
 
+        return CommandResult.Ok($"已推送到 {target.ProviderName}。若要上線 Pages，請在 {target.ProviderName} 設定 Pages/CI，或使用 hexo-deployer-git 部署分支。");
+    }
     public async Task<CommandResult> PushAsync(
         string sitePath,
         string commitMessage = "Update site via Hexoer",
@@ -423,7 +464,10 @@ public/
     {
         var info = await GetInfoAsync(sitePath, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(info.Owner) || string.IsNullOrWhiteSpace(info.Repo))
-            return CommandResult.Fail("找不到 GitHub remote（origin）。請先建立或連結 repository。");
+            return CommandResult.Fail("找不到 remote（origin）。請先建立或連結 repository。");
+
+        if (info.Provider != RemoteGitProvider.GitHub)
+            return CommandResult.Ok($"已推送到 {ProviderName(info.Provider)}。Pages 啟用與 CI 設定需在該平台完成。");
 
         var permission = await GhAsync(
             $"api repos/{info.Owner}/{info.Repo} --jq .permissions.admin",
@@ -485,7 +529,6 @@ public/
             update.ExitCode,
             update.StandardOutput);
     }
-
     public async Task<GitHubPagesStatus> GetPagesStatusAsync(
         string sitePath,
         string? owner = null,
@@ -497,6 +540,18 @@ public/
             var info = await GetInfoAsync(sitePath, cancellationToken).ConfigureAwait(false);
             owner ??= info.Owner;
             repo ??= info.Repo;
+            if (info.Provider != RemoteGitProvider.Unknown && info.Provider != RemoteGitProvider.GitHub)
+            {
+                var target = FromProviderPath(info.Provider, $"{info.Owner}/{info.Repo}");
+                return new GitHubPagesStatus
+                {
+                    Success = true,
+                    Enabled = false,
+                    HtmlUrl = target.PagesUrl,
+                    Status = "external_provider",
+                    Message = $"{target.ProviderName} Pages 狀態需在平台上查詢；Hexoer 已提供建議網址。"
+                };
+            }
         }
 
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
@@ -505,7 +560,7 @@ public/
             {
                 Success = false,
                 Enabled = false,
-                Message = "尚未連結 GitHub repository。"
+                Message = "尚未連結 repository。"
             };
         }
 
@@ -626,13 +681,8 @@ public/
             return (null, null);
 
         var target = ParseRepositoryTarget(repoUrl);
-        if (target.IsValid)
-            return (target.Owner, target.Repository);
-
-        var match = GitHubRemoteRegex().Match(repoUrl);
-        return match.Success ? (match.Groups["owner"].Value, match.Groups["repo"].Value) : (null, null);
+        return target.IsValid ? (target.Owner, target.Repository) : (null, null);
     }
-
     private async Task<CommandResult?> PrepareDeploymentMarkerAsync(
         string sitePath,
         IProgress<string>? progress,
@@ -731,40 +781,168 @@ public/
 
     private static (string? Owner, string? Repo) ParseGitHubRemote(string url)
     {
-        var match = GitHubRemoteRegex().Match(url);
-        return match.Success ? (match.Groups["owner"].Value, match.Groups["repo"].Value) : (null, null);
+        var target = ParseRepositoryTarget(url);
+        return target.IsValid ? (target.Owner, target.Repository) : (null, null);
     }
 
-    private static GitHubRepositoryTarget FromOwnerRepo(string owner, string repository)
+    private static GitHubRepositoryTarget FromOwnerRepo(string owner, string repository) =>
+        FromProviderPath(RemoteGitProvider.GitHub, $"{owner}/{repository}");
+
+    private static GitHubRepositoryTarget FromProviderPath(RemoteGitProvider provider, string path)
     {
+        var segments = path.Trim().Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length < 2)
+            return InvalidTarget("網址必須包含 owner/workspace 與 repository 名稱。");
+
+        var repository = Uri.UnescapeDataString(segments[^1]);
         if (repository.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
             repository = repository[..^4];
 
-        if (!GitHubOwnerRegex().IsMatch(owner) || !GitHubRepositoryRegex().IsMatch(repository))
-            return InvalidTarget("GitHub owner 或 repository 名稱格式無效。");
+        var owner = string.Join('/', segments[..^1].Select(Uri.UnescapeDataString));
+        if (!RepositoryOwnerRegex().IsMatch(owner)
+            || owner.Contains("..", StringComparison.Ordinal)
+            || owner.Contains("//", StringComparison.Ordinal)
+            || !GitHubRepositoryRegex().IsMatch(repository))
+        {
+            return InvalidTarget("owner/workspace 或 repository 名稱格式無效。");
+        }
 
-        var userSite = repository.Equals($"{owner}.github.io", StringComparison.OrdinalIgnoreCase);
-        var pagesUrl = userSite
-            ? $"https://{owner.ToLowerInvariant()}.github.io/"
-            : $"https://{owner.ToLowerInvariant()}.github.io/{repository}/";
+        var canonicalHost = provider switch
+        {
+            RemoteGitProvider.GitHub => "github.com",
+            RemoteGitProvider.GitLab => "gitlab.com",
+            RemoteGitProvider.Codeberg => "codeberg.org",
+            RemoteGitProvider.Bitbucket => "bitbucket.org",
+            _ => string.Empty
+        };
+        if (string.IsNullOrWhiteSpace(canonicalHost))
+            return InvalidTarget("目前支援 GitHub、GitLab、Codeberg 與 Bitbucket。");
+
+        var pagesOwner = owner.Split('/', StringSplitOptions.RemoveEmptyEntries).Last().ToLowerInvariant();
+        var repositoryLower = repository.ToLowerInvariant();
+        var userSite = provider switch
+        {
+            RemoteGitProvider.GitHub => repository.Equals($"{pagesOwner}.github.io", StringComparison.OrdinalIgnoreCase),
+            RemoteGitProvider.GitLab => repository.Equals($"{pagesOwner}.gitlab.io", StringComparison.OrdinalIgnoreCase),
+            RemoteGitProvider.Codeberg => repository.Equals("pages", StringComparison.OrdinalIgnoreCase),
+            RemoteGitProvider.Bitbucket => repository.Equals($"{pagesOwner}.bitbucket.io", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+        var pagesUrl = provider switch
+        {
+            RemoteGitProvider.GitHub => userSite
+                ? $"https://{pagesOwner}.github.io/"
+                : $"https://{pagesOwner}.github.io/{repository}/",
+            RemoteGitProvider.GitLab => userSite
+                ? $"https://{pagesOwner}.gitlab.io/"
+                : $"https://{pagesOwner}.gitlab.io/{repository}/",
+            RemoteGitProvider.Codeberg => userSite
+                ? $"https://{pagesOwner}.codeberg.page/"
+                : $"https://{pagesOwner}.codeberg.page/{repository}/",
+            RemoteGitProvider.Bitbucket => userSite
+                ? $"https://{pagesOwner}.bitbucket.io/"
+                : $"https://{pagesOwner}.bitbucket.io/{repository}/",
+            _ => null
+        };
 
         return new GitHubRepositoryTarget
         {
             IsValid = true,
+            Provider = provider,
             Owner = owner,
             Repository = repository,
-            CanonicalUrl = $"https://github.com/{owner}/{repository}.git",
+            CanonicalUrl = $"https://{canonicalHost}/{owner}/{repository}.git",
             PagesUrl = pagesUrl,
             IsUserOrOrganizationSite = userSite
         };
     }
+
+    private static GitHubRepositoryTarget FromPagesUri(Uri uri)
+    {
+        var host = uri.Host.ToLowerInvariant();
+        if (host.EndsWith(".github.io", StringComparison.OrdinalIgnoreCase))
+        {
+            var owner = host[..^".github.io".Length];
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var repository = segments.Length == 0 || IsPublishedUserSitePath(segments)
+                ? $"{owner}.github.io"
+                : Uri.UnescapeDataString(segments[0]);
+            return FromProviderPath(RemoteGitProvider.GitHub, $"{owner}/{repository}");
+        }
+
+        if (host.EndsWith(".gitlab.io", StringComparison.OrdinalIgnoreCase))
+        {
+            var owner = host[..^".gitlab.io".Length];
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var repository = segments.Length == 0 || IsPublishedUserSitePath(segments)
+                ? $"{owner}.gitlab.io"
+                : Uri.UnescapeDataString(segments[0]);
+            return FromProviderPath(RemoteGitProvider.GitLab, $"{owner}/{repository}");
+        }
+
+        if (host.EndsWith(".codeberg.page", StringComparison.OrdinalIgnoreCase))
+        {
+            var owner = host[..^".codeberg.page".Length];
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var repository = segments.Length == 0 || IsPublishedUserSitePath(segments)
+                ? "pages"
+                : Uri.UnescapeDataString(segments[0]);
+            return FromProviderPath(RemoteGitProvider.Codeberg, $"{owner}/{repository}");
+        }
+
+        if (host.EndsWith(".bitbucket.io", StringComparison.OrdinalIgnoreCase))
+        {
+            var owner = host[..^".bitbucket.io".Length];
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var repository = segments.Length == 0 || IsPublishedUserSitePath(segments)
+                ? $"{owner}.bitbucket.io"
+                : Uri.UnescapeDataString(segments[0]);
+            return FromProviderPath(RemoteGitProvider.Bitbucket, $"{owner}/{repository}");
+        }
+
+        return InvalidTarget("不是支援的 Pages 網址。");
+    }
+
+    private static bool LooksLikeKnownHostPath(string value) =>
+        value.StartsWith("github.com/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("www.github.com/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("gitlab.com/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("www.gitlab.com/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("codeberg.org/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("www.codeberg.org/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("bitbucket.org/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("www.bitbucket.org/", StringComparison.OrdinalIgnoreCase);
+
+    private static bool LooksLikeKnownPagesHost(string value) =>
+        value.Contains(".github.io", StringComparison.OrdinalIgnoreCase)
+        || value.Contains(".gitlab.io", StringComparison.OrdinalIgnoreCase)
+        || value.Contains(".codeberg.page", StringComparison.OrdinalIgnoreCase)
+        || value.Contains(".bitbucket.io", StringComparison.OrdinalIgnoreCase);
+
+    private static RemoteGitProvider ProviderFromHost(string host)
+    {
+        var normalized = host.Trim().ToLowerInvariant();
+        if (normalized is "github.com" or "www.github.com") return RemoteGitProvider.GitHub;
+        if (normalized is "gitlab.com" or "www.gitlab.com") return RemoteGitProvider.GitLab;
+        if (normalized is "codeberg.org" or "www.codeberg.org") return RemoteGitProvider.Codeberg;
+        if (normalized is "bitbucket.org" or "www.bitbucket.org") return RemoteGitProvider.Bitbucket;
+        return RemoteGitProvider.Unknown;
+    }
+
+    private static string ProviderName(RemoteGitProvider provider) => provider switch
+    {
+        RemoteGitProvider.GitHub => "GitHub",
+        RemoteGitProvider.GitLab => "GitLab",
+        RemoteGitProvider.Codeberg => "Codeberg",
+        RemoteGitProvider.Bitbucket => "Bitbucket",
+        _ => "Git"
+    };
 
     private static GitHubRepositoryTarget InvalidTarget(string message) => new()
     {
         IsValid = false,
         ErrorMessage = message
     };
-
     private const string DefaultHexoPagesWorkflow = """
 # Build and deploy a Hexo site to GitHub Pages
 name: Deploy Hexo site to Pages
@@ -829,14 +1007,28 @@ jobs:
         uses: actions/deploy-pages@v4
 """;
 
-    [GeneratedRegex(@"github\.com[:/](?<owner>[^/]+)/(?<repo>[^/\s]+?)(?:\.git)?/?$", RegexOptions.IgnoreCase)]
-    private static partial Regex GitHubRemoteRegex();
+    private static bool IsPublishedUserSitePath(string[] segments)
+    {
+        if (segments.Length == 0) return true;
 
-    [GeneratedRegex(@"^git@github\.com:(?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?$", RegexOptions.IgnoreCase)]
-    private static partial Regex GitHubSshRemoteRegex();
+        var first = Uri.UnescapeDataString(segments[0]);
+        if (first.Equals("index.html", StringComparison.OrdinalIgnoreCase)
+            || first.Equals("index.htm", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
 
-    [GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")]
-    private static partial Regex GitHubOwnerRegex();
+        if (PublishedUserSiteRootRegex().IsMatch(first) || YearSegmentRegex().IsMatch(first))
+            return true;
+
+        return segments.Length >= 2;
+    }
+
+    [GeneratedRegex(@"^(?:git@)?(?<host>github\.com|gitlab\.com|codeberg\.org|bitbucket\.org):(?<path>[^\s]+?)(?:\.git)?/?$", RegexOptions.IgnoreCase)]
+    private static partial Regex GenericSshRemoteRegex();
+
+    [GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,200}[A-Za-z0-9])?$")]
+    private static partial Regex RepositoryOwnerRegex();
 
     [GeneratedRegex(@"^[A-Za-z0-9._-]{1,100}$")]
     private static partial Regex GitHubRepositoryRegex();
@@ -849,4 +1041,16 @@ jobs:
 
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._/-]*$")]
     private static partial Regex GitBranchRegex();
+
+[GeneratedRegex(@"^(archives|tags|categories|about|css|js|images|img|assets|fancybox|lib|page|atom\.xml|rss\.xml|sitemap\.xml|404\.html|favicon\.ico)$", RegexOptions.IgnoreCase)]
+    private static partial Regex PublishedUserSiteRootRegex();
+
+    [GeneratedRegex(@"^(19|20)\d{2}$")]
+    private static partial Regex YearSegmentRegex();
 }
+
+
+
+
+
+

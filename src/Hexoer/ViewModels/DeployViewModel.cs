@@ -21,7 +21,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     private DeploymentVersionState? _lastDeploymentState;
     private string? _lastExpectedDeploymentId;
 
-    public override string Title => "GitHub Pages";
+    public override string Title => "多平台 Pages";
     public override string Icon => "☁";
 
     [ObservableProperty] public partial string GitStatus { get; set; } = string.Empty;
@@ -32,7 +32,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     [ObservableProperty] public partial string RepoName { get; set; } = string.Empty;
     [ObservableProperty] public partial string RepositoryUrl { get; set; } = string.Empty;
     [ObservableProperty] public partial string RepositoryTargetSummary { get; set; } =
-        "貼上既有 GitHub repository 網址後，Hexoer 會先顯示目標與 Pages 網址。";
+        "貼上 GitHub、GitLab、Codeberg 或 Bitbucket repository 網址後，Hexoer 會先顯示目標與 Pages 網址。";
     [ObservableProperty] public partial bool CanConnectRepository { get; set; }
     [ObservableProperty] public partial bool SyncRecommendedSiteUrl { get; set; } = true;
     [ObservableProperty] public partial bool IsPublicRepo { get; set; } = true;
@@ -60,13 +60,14 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         if (!target.IsValid)
         {
             RepositoryTargetSummary = string.IsNullOrWhiteSpace(value)
-                ? "貼上既有 GitHub repository 網址後，Hexoer 會先顯示目標與 Pages 網址。"
+                ? "貼上 GitHub、GitLab、Codeberg 或 Bitbucket repository 網址後，Hexoer 會先顯示目標與 Pages 網址。"
                 : target.ErrorMessage;
             return;
         }
 
         RepoName = target.Repository!;
         RepositoryTargetSummary =
+            $"平台：{target.ProviderName}\n" +
             $"Repository：{target.Owner}/{target.Repository}\n" +
             $"網站類型：{(target.IsUserOrOrganizationSite ? "使用者／組織網站" : "專案網站")}\n" +
             $"建議 Pages 網址：{target.PagesUrl}\n" +
@@ -151,7 +152,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         IsBusy = true;
         try
         {
-            StatusMessage = "正在確認 GitHub repository 推送權限…";
+            StatusMessage = target.Provider == RemoteGitProvider.GitHub ? "正在確認 GitHub repository 推送權限…" : "將使用 git push 驗證遠端推送權限…";
             var access = await _services.GitHub.CheckPushAccessAsync(target);
             AppendLog(access.Message);
             if (!access.HasAccess)
@@ -188,7 +189,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
                 progress);
             AppendLog(result.CombinedOutput);
             StatusMessage = result.Success
-                ? "已連結 repository、推送網站並啟用 GitHub Pages"
+                ? (target.Provider == RemoteGitProvider.GitHub ? "已連結 repository、推送網站並啟用 GitHub Pages" : $"已推送到 {target.ProviderName}")
                 : "連結或部署失敗；請查看操作日誌";
             await RefreshAsync();
             await CheckDeploymentVersionAsync(manual: false, CancellationToken.None);
@@ -237,6 +238,9 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         }
 
         if (RepoName.Contains("github.com", StringComparison.OrdinalIgnoreCase)
+            || RepoName.Contains("gitlab.com", StringComparison.OrdinalIgnoreCase)
+            || RepoName.Contains("codeberg.org", StringComparison.OrdinalIgnoreCase)
+            || RepoName.Contains("bitbucket.org", StringComparison.OrdinalIgnoreCase)
             || RepoName.Contains('/')
             || RepoName.Contains('\\'))
         {
@@ -267,7 +271,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
                 site, RepoName.Trim(), IsPublicRepo, progress);
             AppendLog(result.CombinedOutput);
             StatusMessage = result.Success
-                ? "已推送並嘗試啟用 GitHub Pages"
+                ? "已推送並嘗試啟用 Pages"
                 : "部署過程有錯誤，請查看日誌";
             await RefreshAsync();
             await CheckDeploymentVersionAsync(manual: false, CancellationToken.None);
@@ -296,7 +300,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
                 return;
             }
 
-            StatusMessage = "尚未連結 GitHub repository。請先在上方貼上完整 Repository URL，再按「連結、推送並啟用 Pages」。";
+            StatusMessage = "尚未連結 Git repository。請先在上方貼上完整 Repository URL，再按「連結、推送」。";
             AppendLog(StatusMessage);
             return;
         }
@@ -342,7 +346,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             await _services.GitHub.EnsureGitHubActionsWorkflowAsync(site);
             var result = await _services.GitHub.EnablePagesFromActionsAsync(site);
             AppendLog(result.CombinedOutput);
-            StatusMessage = result.Success ? "已請求啟用 GitHub Pages" : "啟用失敗";
+            StatusMessage = result.Success ? "已請求啟用 Pages" : "啟用失敗";
             await RefreshPagesStatusAsync();
         }
         finally
@@ -401,7 +405,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     {
         if (string.IsNullOrWhiteSpace(DeployerRepoUrl))
         {
-            StatusMessage = "請填寫 GitHub repo URL";
+            StatusMessage = "請填寫 Git repo URL";
             return;
         }
 
@@ -497,7 +501,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             if (!RequireSite(out var site))
             {
                 DeploymentMonitorTitle = "尚未選擇網站";
-                DeploymentMonitorSummary = "請先在「環境設定」開啟或建立 Hexo 網站。";
+                DeploymentMonitorSummary = "請先在「環境設定」開啟、建立，或從遠端 Git 複製 Hexo 網站。";
                 DeploymentMonitorSchedule = "選擇網站後開始每 5 分鐘檢查";
                 return;
             }
@@ -568,7 +572,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         sitePath = _services.Project.ProjectPath ?? string.Empty;
         if (!_services.Project.IsHexoProject)
         {
-            StatusMessage = "請先在「環境設定」開啟或建立 Hexo 網站。";
+            StatusMessage = "請先在「環境設定」開啟、建立，或從遠端 Git 複製 Hexo 網站。";
             return false;
         }
 
@@ -603,3 +607,6 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             LogText = LogText[^60_000..];
     }
 }
+
+
+

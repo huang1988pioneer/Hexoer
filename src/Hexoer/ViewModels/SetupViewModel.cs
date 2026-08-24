@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,6 +26,10 @@ public partial class SetupViewModel : PageViewModelBase
     [ObservableProperty] public partial string GitIdentityStatus { get; set; } = "未檢查";
     [ObservableProperty] public partial string GitHubStatus { get; set; } = "未檢查";
     [ObservableProperty] public partial string RepositoryUrl { get; set; } = string.Empty;
+    [ObservableProperty] public partial string CloneRepositoryUrl { get; set; } = string.Empty;
+    [ObservableProperty] public partial string CloneTargetSummary { get; set; } =
+        "貼上 GitHub、GitLab、Codeberg、Bitbucket repository 或 Pages 網址後，Hexoer 會顯示將複製的目標。";
+    [ObservableProperty] public partial bool CanCloneRepository { get; set; }
     [ObservableProperty] public partial string LogText { get; set; } = string.Empty;
     [ObservableProperty] public partial bool AllReady { get; set; }
     [ObservableProperty] public partial bool IsServerRunning { get; set; }
@@ -82,7 +87,7 @@ public partial class SetupViewModel : PageViewModelBase
             ProjectStatus = status.ProjectValid
                 ? $"✓ 有效專案：{status.ProjectPath}"
                 : string.IsNullOrWhiteSpace(status.ProjectPath)
-                    ? "○ 尚未選擇專案"
+                    ? "○ 尚未選擇專案（可一鍵建立，或從遠端 Git 複製）"
                     : "✗ 不是有效的 Hexo 專案（缺少 _config.yml）";
             ThemeStatus = status.ThemeName ?? "-";
             var identity = await _services.Git.GetIdentityAsync();
@@ -101,6 +106,127 @@ public partial class SetupViewModel : PageViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    partial void OnCloneRepositoryUrlChanged(string value)
+    {
+        var target = GitHubService.ParseRepositoryTarget(value);
+        CanCloneRepository = target.IsValid;
+        if (!target.IsValid)
+        {
+            CloneTargetSummary = string.IsNullOrWhiteSpace(value)
+                ? "貼上 GitHub、GitLab、Codeberg、Bitbucket repository 或 Pages 網址後，Hexoer 會顯示將複製的目標。"
+                : target.ErrorMessage;
+            return;
+        }
+
+        CloneTargetSummary =
+            $"平台：{target.ProviderName}\n" +
+            $"Repository：{target.Owner}/{target.Repository}\n" +
+            $"網站類型：{(target.IsUserOrOrganizationSite ? "使用者／組織網站" : "專案網站")}\n" +
+            $"建議 Pages 網址：{target.PagesUrl}\n" +
+            "本機沒有網站時，可把 GitHub 上的 Hexo 原始碼複製下來繼續編輯。";
+    }
+
+    [RelayCommand]
+    private async Task DetectGitHubPagesAsync()
+    {
+        await RunStepAsync("偵測 GitHub Pages 網站…", async () =>
+        {
+            var ghOk = await _services.GitHub.IsGhAvailableAsync();
+            if (!ghOk)
+                throw new InvalidOperationException("找不到 GitHub CLI。請安裝 gh 並執行 gh auth login。");
+
+            var repos = await _services.GitHub.ListLikelyPagesRepositoriesAsync();
+            if (repos.Count == 0)
+            {
+                var identity = await _services.Git.GetIdentityAsync();
+                throw new InvalidOperationException(
+                    identity.GitHubAuthenticated
+                        ? "找不到 *.github.io repository。請貼上 Git repository 或 https://USERNAME.github.io/ 網址。"
+                        : "尚未透過 GitHub CLI 登入。請先 gh auth login，或直接貼上 repository 網址。");
+            }
+
+            foreach (var repo in repos)
+                AppendLog($"找到：{repo.Owner}/{repo.Repository} → {repo.PagesUrl}");
+
+            var selected = repos[0];
+            CloneRepositoryUrl = selected.CanonicalUrl ?? $"https://github.com/{selected.Owner}/{selected.Repository}";
+            if (string.IsNullOrWhiteSpace(RepositoryUrl))
+                RepositoryUrl = CloneRepositoryUrl;
+            StatusMessage = $"已填入 {selected.Owner}/{selected.Repository}";
+        });
+    }
+
+    [RelayCommand]
+    private async Task InspectRemoteSiteAsync()
+    {
+        var target = GitHubService.ParseRepositoryTarget(CloneRepositoryUrl);
+        if (!target.IsValid)
+        {
+            CloneTargetSummary = target.ErrorMessage;
+            StatusMessage = target.ErrorMessage;
+            return;
+        }
+
+        await RunStepAsync("檢查遠端 遠端網站…", async () =>
+        {
+            var info = await _services.GitHub.InspectRemoteSiteAsync(target);
+            CloneTargetSummary = info.Message;
+            AppendLog(info.Message);
+            if (!info.Success)
+                throw new InvalidOperationException(info.Message.Split('\n')[0]);
+            StatusMessage = info.LooksLikeHexoSource
+                ? "遠端有 Hexo 原始碼，可以複製到本機。"
+                : info.LooksLikeGeneratedSite
+                    ? "遠端是靜態網站，沒有 Hexo 原始碼。"
+                    : "遠端檢查完成。";
+        });
+    }
+
+    [RelayCommand]
+    private async Task CloneFromGitHubAsync()
+    {
+        var target = GitHubService.ParseRepositoryTarget(CloneRepositoryUrl);
+        if (!target.IsValid)
+        {
+            StatusMessage = target.ErrorMessage;
+            CloneTargetSummary = target.ErrorMessage;
+            return;
+        }
+
+        string? cloneMessage = null;
+        await RunStepAsync("從遠端複製網站到本機…", async () =>
+        {
+            var preferred = await ResolveClonePreferredPathAsync();
+            if (string.IsNullOrWhiteSpace(preferred))
+                throw new InvalidOperationException("已取消。");
+
+            var progress = new Progress<string>(message =>
+            {
+                AppendLog(message);
+                StatusMessage = message;
+            });
+            var result = await _services.GitHub.CloneSiteToLocalAsync(target, preferred, progress);
+            AppendLog(result.Message);
+            if (!result.Success)
+                throw new InvalidOperationException(result.Message.Split('\n')[0]);
+
+            if (!string.IsNullOrWhiteSpace(result.LocalPath) && result.LooksLikeHexoSource)
+            {
+                ProjectPath = result.LocalPath;
+                RepositoryUrl = target.CanonicalUrl ?? CloneRepositoryUrl;
+            }
+
+            CloneTargetSummary = result.Message;
+            cloneMessage = result.LooksLikeHexoSource
+                ? result.Message
+                : "已複製檔案，但遠端沒有 Hexo 原始碼。";
+            StatusMessage = cloneMessage;
+        });
+        await CheckEnvironmentAsync();
+        if (!string.IsNullOrWhiteSpace(cloneMessage))
+            StatusMessage = cloneMessage;
     }
 
     [RelayCommand]
@@ -163,13 +289,13 @@ public partial class SetupViewModel : PageViewModelBase
     [RelayCommand]
     private async Task InitializeGitHubAsync()
     {
-        await RunStepAsync("建立 GitHub Pages 工作流程並推送 main…", async () =>
+        await RunStepAsync("建立 Git 遠端並推送 main…", async () =>
         {
             await _services.Git.WritePagesWorkflowAsync();
             var result = await _services.Git.InitializeAndPushAsync(RepositoryUrl.Trim());
             AppendLog(result.CombinedOutput);
             if (!result.Success) throw new InvalidOperationException("Git 初始化或推送失敗。請確認 gh auth login 與 repository 權限。");
-            StatusMessage = "已推送 main；請在 GitHub Settings → Pages 選擇 GitHub Actions。";
+            StatusMessage = "已推送 main。GitHub 會自動加入 Actions workflow；其他平台請在平台端設定 Pages/CI 或 deploy 分支。";
         });
     }
 
@@ -227,6 +353,30 @@ public partial class SetupViewModel : PageViewModelBase
         StatusMessage = "已開啟 " + _services.Server.PreviewUrl;
     }
 
+    private async Task<string?> ResolveClonePreferredPathAsync()
+    {
+        if (_services.Project.IsHexoProject && !string.IsNullOrWhiteSpace(ProjectPath))
+        {
+            var parent = Path.GetDirectoryName(
+                ProjectPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (!string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent))
+            {
+                AppendLog($"本機已有 Hexo 專案，改複製到同一層資料夾：{parent}");
+                return parent;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(ProjectPath))
+            return ProjectPath;
+
+        var folder = await DialogHelper.PickFolderAsync("選擇要複製 遠端網站的資料夾");
+        if (string.IsNullOrWhiteSpace(folder))
+            return null;
+
+        ProjectPath = folder;
+        return folder;
+    }
+
     private void RefreshServerState()
     {
         IsServerRunning = _services.Server.IsRunning;
@@ -265,3 +415,6 @@ public partial class SetupViewModel : PageViewModelBase
             LogText = LogText[^60_000..];
     }
 }
+
+
+

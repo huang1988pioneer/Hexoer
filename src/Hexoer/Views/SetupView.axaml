@@ -7,7 +7,7 @@
     <StackPanel Spacing="16" Margin="8">
       <TextBlock Classes="h1" Text="一鍵建立 Hexo 環境" />
       <TextBlock Classes="muted" TextWrapping="Wrap"
-                 Text="檢查本機 Node / npm / Git，選擇或初始化 Hexo 專案，並安裝依賴。" />
+                 Text="檢查本機 Node / npm / Git，選擇、初始化，或從 GitHub、GitLab、Codeberg 或 Bitbucket 把既有網站複製到本機。" />
 
       <Border Classes="card">
         <StackPanel Spacing="10">
@@ -25,6 +25,48 @@
                       IsEnabled="{Binding !IsBusy}" />
             </StackPanel>
           </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" BorderBrush="#0E7490" BorderThickness="1">
+        <StackPanel Spacing="10">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="3">
+              <TextBlock Classes="h2" Text="從遠端 Git 複製到本機" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="本機還沒有網站、但遠端平台已有來源或 Pages 網站時，可貼 repository 或 Pages 網址，複製 Hexo 原始碼後繼續編輯。" />
+            </StackPanel>
+            <Border Grid.Column="1" Classes="pill" Padding="10,4" VerticalAlignment="Top">
+              <TextBlock Text="沒有本機站" Foreground="#67D8FF" FontWeight="SemiBold" FontSize="12" />
+            </Border>
+          </Grid>
+
+          <TextBox Text="{Binding CloneRepositoryUrl}"
+                   PlaceholderText="https://github.com/USER/site、https://gitlab.com/GROUP/site、https://codeberg.org/USER/site、https://bitbucket.org/WORKSPACE/site"
+                   FontFamily="Consolas, Cascadia Mono, monospace" />
+
+          <Border Background="#101720" BorderBrush="#2A3648" BorderThickness="1"
+                  CornerRadius="8" Padding="12">
+            <TextBlock Text="{Binding CloneTargetSummary}" TextWrapping="Wrap"
+                       Classes="muted" LineHeight="20" />
+          </Border>
+
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="偵測我的 GitHub Pages"
+                      Command="{Binding DetectGitHubPagesCommand}"
+                      IsEnabled="{Binding !IsBusy}" />
+              <Button Content="檢查遠端"
+                      Command="{Binding InspectRemoteSiteCommand}"
+                      IsEnabled="{Binding CanCloneRepository}" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="accent" Content="複製到本機"
+                    Command="{Binding CloneFromGitHubCommand}"
+                    IsEnabled="{Binding CanCloneRepository}"
+                    VerticalAlignment="Center" />
+          </Grid>
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="複製目標使用上方的專案路徑；尚未選擇時會先請你選資料夾。若該資料夾已有內容，會在同一層或底下建立 repository 同名資料夾。需要 Git；私有 repo 請先完成該平台的 Git 認證。" />
         </StackPanel>
       </Border>
 
@@ -56,15 +98,15 @@
 
       <Border Classes="card">
         <StackPanel Spacing="10">
-          <TextBlock Classes="h2" Text="Git 與 GitHub Pages" />
-          <TextBlock Classes="muted" TextWrapping="Wrap" Text="認證交由 Git Credential Manager 或 GitHub CLI 管理；Hexoer 不會儲存 Personal Access Token。" />
+          <TextBlock Classes="h2" Text="Git 與 Pages" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="認證交由 Git Credential Manager、SSH 或各平台 CLI 管理；Hexoer 不會儲存 Personal Access Token。" />
           <TextBlock Text="{Binding GitIdentityStatus}" TextWrapping="Wrap" />
           <TextBlock Text="{Binding GitHubStatus}" />
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <TextBox Text="{Binding RepositoryUrl}" PlaceholderText="https://github.com/USERNAME/REPOSITORY.git" />
+            <TextBox Text="{Binding RepositoryUrl}" PlaceholderText="https://github.com/USER/site.git 或 https://gitlab.com/GROUP/site.git" />
             <Button Grid.Column="1" Classes="accent" Content="建立 Git + Pages 工作流 + 推送" Command="{Binding InitializeGitHubCommand}" IsEnabled="{Binding !IsBusy}" />
           </Grid>
-          <TextBlock Classes="muted" TextWrapping="Wrap" Text="首次推送后，请在 GitHub Settings → Pages → Source 选择 GitHub Actions。" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="GitHub 會自動加入 Actions workflow；GitLab、Codeberg、Bitbucket 請在平台端設定 Pages/CI 或 deploy 分支。" />
         </StackPanel>
       </Border>
 
@@ -72,21 +114,22 @@
         <StackPanel Spacing="10">
           <TextBlock Classes="h2" Text="本機預覽（hexo server）" />
           <TextBlock Classes="muted" TextWrapping="Wrap"
-                     Text="啟動本機開發伺服器，於瀏覽器預覽完整 Hexo 站點（預設 http://localhost:4000/）。" />
-          <Grid ColumnDefinitions="Auto,80,Auto,Auto,Auto,*" ColumnSpacing="8">
+                     Text="啟動本機開發伺服器，於瀏覽器預覽完整 Hexo 站點（預設 http://localhost:4000/）。伺服器會持續執行，直到按「停止」。" />
+          <Grid ColumnDefinitions="Auto,80,Auto,Auto,*,Auto" ColumnSpacing="8">
             <TextBlock VerticalAlignment="Center" Text="Port" />
             <TextBox Grid.Column="1" Text="{Binding ServerPort}" />
             <Button Grid.Column="2" Classes="accent" Content="啟動 server"
                     Command="{Binding StartServerCommand}"
                     IsEnabled="{Binding !IsServerRunning}" />
-            <Button Grid.Column="3" Content="停止"
-                    Command="{Binding StopServerCommand}"
-                    IsEnabled="{Binding IsServerRunning}" />
-            <Button Grid.Column="4" Content="開啟瀏覽器"
+            <Button Grid.Column="3" Content="開啟瀏覽器"
                     Command="{Binding OpenServerInBrowserCommand}"
                     IsEnabled="{Binding IsServerRunning}" />
-            <TextBlock Grid.Column="5" Classes="accent-text" VerticalAlignment="Center"
+            <TextBlock Grid.Column="4" Classes="accent-text" VerticalAlignment="Center"
                        Text="{Binding ServerUrl}" IsVisible="{Binding IsServerRunning}" />
+            <Button Grid.Column="5" Content="停止"
+                    Command="{Binding StopServerCommand}"
+                    IsEnabled="{Binding IsServerRunning}"
+                    HorizontalAlignment="Right" />
           </Grid>
         </StackPanel>
       </Border>

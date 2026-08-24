@@ -1,12 +1,23 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ae="using:AvaloniaEdit">
 
   <Style Selector="TextBlock.h1">
     <Setter Property="FontSize" Value="22" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
+  <Style Selector="TextBlock.pageTitle">
+    <Setter Property="FontSize" Value="26" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
   <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.sectionTitle">
     <Setter Property="FontSize" Value="15" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
@@ -76,5 +87,93 @@
   <Style Selector="TextBox.logBox">
     <Setter Property="Background" Value="#0D1218" />
     <Setter Property="Padding" Value="10" />
+  </Style>
+
+  <Style Selector="Border.toolGroup">
+    <Setter Property="Background" Value="#10161F" />
+    <Setter Property="BorderBrush" Value="#263244" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="Margin" Value="0,0,8,5" />
+  </Style>
+
+  <Style Selector="Border.modeToggle">
+    <Setter Property="Background" Value="#10161F" />
+    <Setter Property="BorderBrush" Value="#263244" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="3" />
+  </Style>
+
+  <Style Selector="Button.modeBtn">
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="#9AA8B8" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="Button.modeBtn:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#1C2736" />
+  </Style>
+
+  <Style Selector="Button.modeBtn.selected">
+    <Setter Property="Background" Value="#0E7490" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
+  <Style Selector="Button.modeBtn.selected:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#0891B2" />
+  </Style>
+
+  <Style Selector="Button.toolBtn">
+    <Setter Property="Padding" Value="9,5" />
+    <Setter Property="MinWidth" Value="34" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="#B7C3D2" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.toolBtn:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#1C2736" />
+  </Style>
+
+  <Style Selector="Button.toolBtn:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="#22334A" />
+  </Style>
+
+  <Style Selector="Button.toolBtn.accentGlyph TextBlock">
+    <Setter Property="Foreground" Value="#7CDAF9" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <Style Selector="ae|TextEditor.markdownEditor">
+    <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, monospace" />
+    <Setter Property="FontSize" Value="13.5" />
+    <Setter Property="Background" Value="#0D1218" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+
+  <Style Selector="TextBox.markdownOutput">
+    <Setter Property="AcceptsReturn" Value="True" />
+    <Setter Property="AcceptsTab" Value="True" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Padding" Value="16,14" />
+    <Setter Property="Background" Value="#0D1218" />
+    <Setter Property="Foreground" Value="#E6EDF3" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, monospace" />
+    <Setter Property="FontSize" Value="13.5" />
+    <Setter Property="CaretBrush" Value="#7CDAF9" />
   </Style>
 </Styles>

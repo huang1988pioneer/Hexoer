@@ -8,6 +8,14 @@ public sealed class AppSettings
 {
     public string? LastProjectPath { get; set; }
     public string? DefaultAuthor { get; set; }
+    /// <summary>Last Markdown editor mode: Wysiwyg or Source.</summary>
+    public string MarkdownEditorMode { get; set; } = "Wysiwyg";
+
+    public void SetMarkdownEditorMode(string mode)
+    {
+        MarkdownEditorMode = string.IsNullOrWhiteSpace(mode) ? "Wysiwyg" : mode;
+        Save();
+    }
 
     private static string SettingsPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Hexoer", "settings.json");

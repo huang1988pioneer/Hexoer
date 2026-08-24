@@ -68,7 +68,7 @@ public sealed class DeploymentMonitorService
             return new DeploymentCheckResult
             {
                 State = DeploymentVersionState.NotConfigured,
-                Message = "尚未取得有效的 GitHub Pages 網址，無法檢查線上版本。",
+                Message = "尚未取得有效的 Pages 網址，無法檢查線上版本。",
                 ExpectedDeploymentId = expected.DeploymentId,
                 CheckedAt = checkedAt
             };
@@ -127,7 +127,7 @@ public sealed class DeploymentMonitorService
                     CheckedAt = checkedAt
                 }
                 : Previous(expected, live.DeploymentId, checkedAt,
-                    "線上網站仍是上一版本；GitHub Pages 尚在部署最新內容。");
+                    "線上網站仍是上一版本；Pages 尚在部署最新內容。");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -205,3 +205,4 @@ public sealed class DeploymentMonitorService
         return client;
     }
 }
+

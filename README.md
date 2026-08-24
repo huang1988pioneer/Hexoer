@@ -27,7 +27,7 @@ dotnet run --project src/Hexoer
 
 ## 使用流程建議
 
-1. **環境設定**：選擇空資料夾 →「一鍵建立」初始化 Hexo 並 `npm install`
+1. **環境設定**：選擇空資料夾 →「一鍵建立」初始化 Hexo 並 `npm install`；若本機沒有網站但 GitHub Pages 已有，可貼 repository 或 `https://USERNAME.github.io/` →「複製到本機」
 2. **站點設定**：填寫 title / author / url 等，或直接編輯完整 YAML
 3. **主題 Themes**：安裝 NexT（或其它）並啟用
 4. **主題設定**：調整 NexT 等主題的 `_config.yml`

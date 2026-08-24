@@ -33,6 +33,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Pages.Add(new ThemeViewModel(services));
         Pages.Add(new ThemeConfigViewModel(services));
         Pages.Add(new ContentViewModel(services));
+        Pages.Add(new MenuViewModel(services));
         Pages.Add(new DeployViewModel(services));
 
         UpdateProjectDisplay();

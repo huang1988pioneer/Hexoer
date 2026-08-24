@@ -5,7 +5,7 @@ using Hexoer.Models;
 
 namespace Hexoer.Services;
 
-/// <summary>Uses the system Git and GitHub CLI; credentials stay with those tools.</summary>
+/// <summary>Uses the system Git and GitHub CLI when available; credentials stay with those tools.</summary>
 public sealed class GitService
 {
     private readonly ProcessRunner _runner;
@@ -31,7 +31,7 @@ public sealed class GitService
     {
         EnsureProject();
         if (string.IsNullOrWhiteSpace(remoteUrl))
-            throw new ArgumentException("請提供 GitHub repository URL。", nameof(remoteUrl));
+            throw new ArgumentException("請提供 Git repository URL。", nameof(remoteUrl));
 
         var target = GitHubService.ParseRepositoryTarget(remoteUrl);
         if (!target.IsValid)
@@ -59,3 +59,5 @@ public sealed class GitService
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
+
+

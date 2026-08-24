@@ -1,0 +1,211 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Hexoer.ViewModels"
+             xmlns:models="using:Hexoer.Models"
+             x:Class="Hexoer.Views.MenuView"
+             x:DataType="vm:MenuViewModel">
+
+    <Grid RowDefinitions="Auto,*" Margin="24">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <StackPanel Spacing="8">
+                <TextBlock Text="選單" Classes="pageTitle"/>
+                <TextBlock Text="網站導覽與文章分開管理。這裡編輯 Home、Archives、Search 等選單項目；部落格文章請到「文章」分頁。"
+                           Classes="muted" TextWrapping="Wrap"/>
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding MenuSummary}" Classes="muted"
+                       VerticalAlignment="Bottom" TextAlignment="Right" Margin="16,0,0,2"/>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="320,*">
+            <DockPanel Margin="0,0,12,0">
+                <Border Classes="card" Padding="12" DockPanel.Dock="Top" Margin="0,0,0,12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="選單項目" Classes="sectionTitle"/>
+                        <TextBlock Text="{Binding ConfigPathLabel}" Classes="caption" TextWrapping="Wrap"/>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                            <ComboBox ItemsSource="{Binding MenuNames}"
+                                      SelectedItem="{Binding SelectedMenuName}"/>
+                            <Button Grid.Column="1" Content="新增選單"
+                                    Command="{Binding AddMenuCommand}"/>
+                        </Grid>
+                        <TextBox PlaceholderText="新選單名稱，例如 social"
+                                 Text="{Binding NewMenuName}"/>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                            <Button Content="新增項目" Classes="accent"
+                                    Command="{Binding AddEntryCommand}" HorizontalAlignment="Stretch"/>
+                            <Button Grid.Column="1" Content="刪除項目"
+                                    Command="{Binding DeleteSelectedCommand}"
+                                    IsEnabled="{Binding HasMenuSelection}"
+                                    HorizontalAlignment="Stretch"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button Content="上移" Command="{Binding MoveUpCommand}"
+                                    IsEnabled="{Binding HasMenuSelection}"/>
+                            <Button Content="下移" Command="{Binding MoveDownCommand}"
+                                    IsEnabled="{Binding HasMenuSelection}"/>
+                            <Button Content="重新整理" Command="{Binding RefreshCommand}"/>
+                        </StackPanel>
+                        <TextBlock Text="快速加入" Classes="caption"/>
+                        <WrapPanel>
+                            <Button Content="首頁" Margin="0,0,6,6"
+                                    Command="{Binding AddPresetCommand}" CommandParameter="首頁 Home"/>
+                            <Button Content="歸檔" Margin="0,0,6,6"
+                                    Command="{Binding AddPresetCommand}" CommandParameter="歸檔 Archives"/>
+                            <Button Content="搜尋" Margin="0,0,6,6"
+                                    Command="{Binding AddPresetCommand}" CommandParameter="搜尋 Search"/>
+                            <Button Content="關於" Margin="0,0,6,6"
+                                    Command="{Binding AddPresetCommand}" CommandParameter="關於 About"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card" Padding="12" DockPanel.Dock="Bottom" Margin="0,12,0,0" Height="260">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+                            <TextBlock Text="網站頁面（非文章）" Classes="sectionTitle"/>
+                            <TextBlock Text="關於、歸檔、搜尋等頁面。可加入選單，或在右側編輯內容。"
+                                       Classes="caption" TextWrapping="Wrap"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                <TextBox PlaceholderText="頁面標題" Text="{Binding NewPageTitle}"/>
+                                <Button Grid.Column="1" Content="新增頁面"
+                                        Command="{Binding CreatePageCommand}"/>
+                            </Grid>
+                            <TextBox PlaceholderText="資料夾，例如 about" Text="{Binding NewPageFolder}"/>
+                            <Button Content="加入目前選單" Command="{Binding AddPageToMenuCommand}"
+                                    IsEnabled="{Binding HasPageSelection}"
+                                    HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                        <ListBox ItemsSource="{Binding SitePages}"
+                                 SelectedItem="{Binding SelectedPage}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="models:ContentItem">
+                                    <StackPanel Margin="2,4" Spacing="2">
+                                        <TextBlock Text="{Binding DisplayTitle}" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding RelativePath}" Classes="caption"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+
+                <Border Classes="card" Padding="8">
+                    <ListBox ItemsSource="{Binding Entries}"
+                             SelectedItem="{Binding SelectedEntry}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MenuEntryItem">
+                                <Grid Margin="2,5" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="{Binding DisplayTitle}" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                                    <Border Grid.Column="1" Classes="pill" Padding="7,2"
+                                            Background="#563E20"
+                                            IsVisible="{Binding CameFromFrontMatter}">
+                                        <TextBlock Text="內容頁" FontSize="11" Foreground="#F4C77B"/>
+                                    </Border>
+                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2"
+                                               Text="{Binding DisplayMeta}" Classes="caption"
+                                               TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </DockPanel>
+
+            <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
+                <Border Classes="card" Padding="12" Margin="0,0,0,12"
+                        IsVisible="{Binding ShowFrontMatterNotice}">
+                    <TextBlock Text="{Binding FrontMatterNotice}" Classes="muted" TextWrapping="Wrap"/>
+                </Border>
+
+                <Panel Grid.Row="1">
+                <Border Classes="card" Padding="16"
+                        IsVisible="{Binding IsEditingMenu}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Spacing="10" IsEnabled="{Binding HasMenuSelection}">
+                            <TextBlock Text="選單項目資料" Classes="sectionTitle"/>
+                            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                                  RowSpacing="8">
+                                <TextBlock Text="顯示名稱" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding SelectedEntry.Name}"
+                                         PlaceholderText="例如 Archives"/>
+
+                                <TextBlock Grid.Row="1" Text="識別碼" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SelectedEntry.Identifier}"
+                                         PlaceholderText="例如 archives"/>
+
+                                <TextBlock Grid.Row="2" Text="網址" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SelectedEntry.Url}"
+                                         PlaceholderText="例如 /archives/"/>
+
+                                <TextBlock Grid.Row="3" Text="別名" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding SelectedEntry.PageRef}"
+                                         PlaceholderText="可留空；Hexo 主題選單主要用網址"/>
+
+                                <TextBlock Grid.Row="4" Text="圖示" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="4" Grid.Column="1"
+                                         Text="{Binding SelectedEntry.Icon}"
+                                         PlaceholderText="例如 home、archives、search、brand-github"/>
+
+                                <TextBlock Grid.Row="5" Text="順序" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding SelectedEntry.Weight}"
+                                         PlaceholderText="數字愈小愈前面"/>
+
+                                <TextBlock Grid.Row="6" Text="上層" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding SelectedEntry.Parent}"
+                                         PlaceholderText="子選單時填上層 identifier"/>
+
+                                <TextBlock Grid.Row="7" Text="選單組" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding SelectedEntry.MenuName}"
+                                         PlaceholderText="menu 或 social"/>
+                            </Grid>
+                            <CheckBox Content="在新分頁開啟" IsChecked="{Binding SelectedEntry.NewTab}"/>
+                            <TextBlock Text="選單寫入主題 YAML（優先 _config.&lt;theme&gt;.yml），與文章 Markdown 分開儲存。"
+                                       Classes="caption" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <Border Classes="card" Padding="16"
+                        IsVisible="{Binding IsEditingPage}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,10">
+                            <TextBlock Text="網站頁面內容" Classes="sectionTitle"/>
+                            <TextBlock Text="{Binding SelectedPage.RelativePath}" Classes="caption"/>
+                            <TextBox Text="{Binding PageTitle}" PlaceholderText="頁面標題"/>
+                        </StackPanel>
+                        <TextBox Text="{Binding PageBody}"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 PlaceholderText="頁面 Markdown 正文（不是文章）"/>
+                    </DockPanel>
+                </Border>
+
+                <Border Classes="card" Padding="16"
+                        IsVisible="{Binding ShowEmptyEditor}">
+                    <StackPanel Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="請選擇左側選單項目或網站頁面" FontWeight="SemiBold"
+                                   TextAlignment="Center"/>
+                        <TextBlock Text="選單項目會寫入主題 YAML；網站頁面是關於／歸檔等非文章內容。"
+                                   Classes="caption" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="360"/>
+                    </StackPanel>
+                </Border>
+                </Panel>
+
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                    <Button Content="儲存選單" Classes="accent" Command="{Binding SaveCommand}"/>
+                    <TextBlock Text="10 秒未編輯會自動儲存" Classes="caption" VerticalAlignment="Center"/>
+                    <Button Content="儲存頁面" Command="{Binding SavePageCommand}"
+                            IsEnabled="{Binding HasPageSelection}"/>
+                    <TextBlock Text="{Binding StatusMessage}" Classes="muted" VerticalAlignment="Center"/>
+                    <TextBlock Text="● 選單未儲存" Foreground="#E6A23C" VerticalAlignment="Center"
+                               IsVisible="{Binding IsDirty}"/>
+                    <TextBlock Text="● 頁面未儲存" Foreground="#E6A23C" VerticalAlignment="Center"
+                               IsVisible="{Binding PageIsDirty}"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>
