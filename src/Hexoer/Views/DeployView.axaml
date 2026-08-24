@@ -140,7 +140,7 @@
 
       <Border Classes="card">
         <StackPanel Spacing="10">
-          <TextBlock Classes="h2" Text="進階：hexo-deployer-git（本機 generate 後推 gh-pages）" />
+          <TextBlock Classes="h2" Text="進階：hexo-deployer-git（本機 generate 後推部署分支）" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="舊流程。新站請優先使用上方的 GitHub Actions。若你仍使用 hexo-deployer-git，可在此寫入 _config.yml 的 deploy 區塊。" />
           <Grid ColumnDefinitions="170,*" ColumnSpacing="8">
@@ -153,7 +153,7 @@
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="此欄位也會依平台分別保存；輸入 owner/repo 時會使用目前選擇的平台。" />
           <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-            <TextBox Text="{Binding DeployerBranch}" PlaceholderText="branch（預設 gh-pages）" />
+            <TextBox Text="{Binding DeployerBranch}" PlaceholderText="{Binding DeployerBranchPlaceholder}" />
             <Button Grid.Column="1" Content="寫入設定 + 安裝 deployer"
                     Command="{Binding SaveDeployConfigCommand}" IsEnabled="{Binding !IsBusy}" />
             <Button Grid.Column="2" Content="hexo deploy"

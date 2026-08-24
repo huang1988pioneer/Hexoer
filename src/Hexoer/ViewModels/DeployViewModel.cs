@@ -52,6 +52,9 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     [ObservableProperty] public partial bool IsCheckingDeployment { get; set; }
     [ObservableProperty] public partial string DeployerRepoUrl { get; set; } = string.Empty;
     [ObservableProperty] public partial string DeployerBranch { get; set; } = "gh-pages";
+    public string DeployerBranchPlaceholder => SelectedRepositoryProvider.Provider == RemoteGitProvider.Codeberg
+        ? "branch（預設 pages）"
+        : "branch（預設 gh-pages）";
 
     public DeployViewModel(ServiceHost services)
     {
@@ -101,11 +104,14 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         if (_skipProviderSettingsLoad)
         {
             _skipProviderSettingsLoad = false;
+            LoadDeployProviderSettings(provider, preserveRepositoryUrl: true);
             SaveDeployProviderSettings(provider);
+            OnPropertyChanged(nameof(DeployerBranchPlaceholder));
             return;
         }
 
         LoadDeployProviderSettings(provider);
+        OnPropertyChanged(nameof(DeployerBranchPlaceholder));
     }
 
     partial void OnDeployerRepoUrlChanged(string value) =>
@@ -463,7 +469,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             StatusMessage = "寫入 deploy 設定並安裝 hexo-deployer-git…";
             await _services.GitHub.ConfigureDeployAsync(
                 ResolveDeployRepoUrl(),
-                string.IsNullOrWhiteSpace(DeployerBranch) ? "gh-pages" : DeployerBranch.Trim());
+                NormalizeDeployerBranch(DeployerBranch, SelectedRepositoryProvider.Provider));
             SaveDeployProviderSettings(SelectedRepositoryProvider.Provider);
             StatusMessage = "Deploy 設定完成";
         }
@@ -626,15 +632,16 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         SelectedRepositoryProvider = RemoteProviderOption.FromProvider(provider);
     }
 
-    private void LoadDeployProviderSettings(RemoteGitProvider provider)
+    private void LoadDeployProviderSettings(RemoteGitProvider provider, bool preserveRepositoryUrl = false)
     {
+        var preservedRepositoryUrl = RepositoryUrl;
         _loadingProviderSettings = true;
         try
         {
             var settings = _services.Project.Settings.GetRemoteProviderSettings(provider);
-            RepositoryUrl = settings.RepositoryUrl ?? string.Empty;
-            DeployerRepoUrl = settings.DeployerRepoUrl ?? string.Empty;
-            DeployerBranch = string.IsNullOrWhiteSpace(settings.DeployerBranch) ? "gh-pages" : settings.DeployerBranch;
+            RepositoryUrl = preserveRepositoryUrl ? preservedRepositoryUrl : settings.RepositoryUrl ?? string.Empty;
+            DeployerRepoUrl = CleanProviderRepoUrl(settings.DeployerRepoUrl, provider);
+            DeployerBranch = NormalizeDeployerBranch(settings.DeployerBranch, provider);
         }
         finally
         {
@@ -651,9 +658,30 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
 
         var settings = _services.Project.Settings.GetRemoteProviderSettings(provider);
         settings.RepositoryUrl = RepositoryUrl.Trim();
-        settings.DeployerRepoUrl = DeployerRepoUrl.Trim();
-        settings.DeployerBranch = string.IsNullOrWhiteSpace(DeployerBranch) ? "gh-pages" : DeployerBranch.Trim();
+        settings.DeployerRepoUrl = CleanProviderRepoUrl(DeployerRepoUrl, provider);
+        settings.DeployerBranch = NormalizeDeployerBranch(DeployerBranch, provider);
         _services.Project.Settings.Save();
+    }
+
+    private static string CleanProviderRepoUrl(string? repoUrl, RemoteGitProvider provider)
+    {
+        if (string.IsNullOrWhiteSpace(repoUrl)) return string.Empty;
+
+        var target = GitHubService.ParseRepositoryTarget(repoUrl, provider);
+        return target.IsValid && target.Provider != provider
+            ? string.Empty
+            : repoUrl.Trim();
+    }
+
+    private static string NormalizeDeployerBranch(string? branch, RemoteGitProvider provider)
+    {
+        if (string.IsNullOrWhiteSpace(branch))
+            return provider == RemoteGitProvider.Codeberg ? "pages" : "gh-pages";
+
+        var trimmed = branch.Trim();
+        return provider == RemoteGitProvider.Codeberg && trimmed.Equals("gh-pages", StringComparison.OrdinalIgnoreCase)
+            ? "pages"
+            : trimmed;
     }
 
     private string ResolveDeployRepoUrl()

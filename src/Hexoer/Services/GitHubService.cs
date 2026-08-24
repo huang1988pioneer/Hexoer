@@ -421,10 +421,16 @@ public/
         var remoteHead = await GitAsync("ls-remote --symref origin HEAD", sitePath, 30_000, cancellationToken)
             .ConfigureAwait(false);
         var branchMatch = RemoteHeadRegex().Match(remoteHead.StandardOutput);
-        var remoteBranch = branchMatch.Success ? branchMatch.Groups["branch"].Value : "main";
+        var remoteBranch = ResolvePushBranch(target, branchMatch.Success ? branchMatch.Groups["branch"].Value : null);
         if (!GitBranchRegex().IsMatch(remoteBranch))
             return CommandResult.Fail("遠端預設分支名稱格式不安全，已停止操作。");
-        var remoteHasCommit = RemoteHeadCommitRegex().IsMatch(remoteHead.StandardOutput);
+
+        var remoteRef = await GitAsync(
+            $"show-ref --verify --quiet \"refs/remotes/origin/{remoteBranch}\"",
+            sitePath,
+            10_000,
+            cancellationToken).ConfigureAwait(false);
+        var remoteHasCommit = remoteRef.Success;
 
         await PrepareReadmeForRemoteMergeAsync(sitePath, remoteBranch, progress, cancellationToken)
             .ConfigureAwait(false);
@@ -771,6 +777,19 @@ public/
         var target = ParseRepositoryTarget(repoUrl);
         return target.IsValid ? (target.Owner, target.Repository) : (null, null);
     }
+
+    private static string ResolvePushBranch(GitHubRepositoryTarget target, string? remoteHeadBranch)
+    {
+        if (target.Provider == RemoteGitProvider.Codeberg
+            && target.Repository?.Equals("pages", StringComparison.OrdinalIgnoreCase) == true)
+            return "pages";
+
+        if (!string.IsNullOrWhiteSpace(remoteHeadBranch))
+            return remoteHeadBranch.Trim();
+
+        return target.Provider == RemoteGitProvider.Codeberg ? "pages" : "main";
+    }
+
     private async Task<CommandResult?> PrepareDeploymentMarkerAsync(
         string sitePath,
         IProgress<string>? progress,
