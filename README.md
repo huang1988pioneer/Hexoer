@@ -64,7 +64,7 @@ dotnet run --project src/Hexoer
 ```powershell
 .\scripts\publish-windows.ps1
 .\scripts\publish-windows.ps1 -SingleFile   # 單檔（較大、啟動略慢）
-.\scripts\publish.ps1 -Version 1.1.1 -SingleFile
+.\scripts\publish.ps1 -Version 1.1.2 -SingleFile
 ```
 
 > 安裝包為 **self-contained**，終端使用者不必另外安裝 .NET Runtime。  

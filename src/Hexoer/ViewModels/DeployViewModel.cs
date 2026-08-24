@@ -147,14 +147,9 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
                 RepoName = Path.GetFileName(site.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 
             var info = await _services.GitHub.GetInfoAsync(site);
-            if (string.IsNullOrWhiteSpace(RepositoryUrl) && !string.IsNullOrWhiteSpace(info.RemoteUrl))
-                RepositoryUrl = info.RemoteUrl;
-            RemoteSummary =
-                $"使用者：{info.GhUser ?? "（未登入）"}\n" +
-                $"驗證：{(info.GhAuthenticated ? "已登入" : "未登入")}\n" +
-                $"分支：{info.Branch ?? "—"}\n" +
-                $"Remote：{info.RemoteUrl ?? "（無 origin）"}\n" +
-                $"Repo：{(info.Owner is null ? "—" : $"{info.Owner}/{info.Repo}")}";
+            if (ShouldApplyOriginRemote(info.RemoteUrl))
+                RepositoryUrl = info.RemoteUrl!;
+            RemoteSummary = BuildRemoteSummary(info);
 
             try
             {
@@ -169,7 +164,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
                 // ignore missing deploy block
             }
 
-            await RefreshPagesStatusAsync();
+            await RefreshPagesStatusForSiteAsync(site, info);
         }
         finally
         {
@@ -229,7 +224,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             AppendLog(result.CombinedOutput);
             StatusMessage = result.Success
                 ? (target.Provider == RemoteGitProvider.GitHub ? "已連結 repository、推送網站並啟用 GitHub Pages" : $"已推送到 {target.ProviderName}")
-                : "連結或部署失敗；請查看操作日誌";
+                : BuildDeploymentFailureMessage(result, "連結或部署失敗；請查看操作日誌");
             await RefreshAsync();
             await CheckDeploymentVersionAsync(manual: false, CancellationToken.None);
         }
@@ -311,7 +306,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             AppendLog(result.CombinedOutput);
             StatusMessage = result.Success
                 ? "已推送並嘗試啟用 Pages"
-                : "部署過程有錯誤，請查看日誌";
+                : BuildDeploymentFailureMessage(result, "部署過程有錯誤，請查看日誌");
             await RefreshAsync();
             await CheckDeploymentVersionAsync(manual: false, CancellationToken.None);
         }
@@ -364,7 +359,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             });
             var result = await _services.GitHub.PushAsync(site, CommitMessage, progress);
             AppendLog(result.CombinedOutput);
-            StatusMessage = result.Success ? "推送完成" : "推送失敗";
+            StatusMessage = result.Success ? "推送完成" : BuildDeploymentFailureMessage(result, "推送失敗");
             await RefreshPagesStatusAsync();
             if (result.Success)
                 await CheckDeploymentVersionAsync(manual: false, CancellationToken.None);
@@ -398,6 +393,20 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
     private async Task RefreshPagesStatusAsync()
     {
         if (!RequireSite(out var site)) return;
+        var info = await _services.GitHub.GetInfoAsync(site);
+        await RefreshPagesStatusForSiteAsync(site, info);
+    }
+
+    private async Task RefreshPagesStatusForSiteAsync(string site, GitRemoteInfo info)
+    {
+        var target = ParseRepositoryTarget(RepositoryUrl);
+        if (ShouldShowSelectedTargetStatus(target, info))
+        {
+            PagesUrl = target.PagesUrl ?? string.Empty;
+            PagesSummary = BuildSelectedTargetPagesSummary(target, info);
+            StatusMessage = $"目前選定部署目標：{target.ProviderName}";
+            return;
+        }
 
         var status = await _services.GitHub.GetPagesStatusAsync(site);
         PagesUrl = status.HtmlUrl ?? string.Empty;
@@ -480,7 +489,7 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
             AppendLog("—— Deploy 開始");
             var result = await _services.GitHub.DeployAsync();
             AppendLog(result.CombinedOutput);
-            StatusMessage = result.Success ? "部署完成" : "部署失敗，請查看日誌";
+            StatusMessage = result.Success ? "部署完成" : BuildDeploymentFailureMessage(result, "部署失敗，請查看日誌");
             if (result.Success)
                 await RefreshPagesStatusAsync();
         }
@@ -495,8 +504,118 @@ public partial class DeployViewModel : PageViewModelBase, IDisposable
         }
     }
 
+    private static string BuildDeploymentFailureMessage(CommandResult result, string fallback)
+    {
+        var output = result.CombinedOutput;
+        if (string.IsNullOrWhiteSpace(output))
+            return fallback;
+
+        if (ContainsAny(output, "You are not allowed to push code", "requested URL returned error: 403", "HTTP 403"))
+            return "推送失敗：目前 Git push 使用的 GitLab 帳號或 token 沒有此專案的推送權限。請確認它和瀏覽器登入帳號一致，且專案權限至少為 Developer/Maintainer；或改用有 write_repository 權限的 Personal Access Token / SSH key 後重試。";
+
+        if (ContainsAny(output, "bitbucket.org") && ContainsAny(output, "Authentication failed", "HTTP Basic: Access denied", "could not read Username", "Invalid username or password", "403", "Forbidden"))
+            return "推送失敗：Bitbucket 認證或權限不足。若 Bitbucket 畫面已顯示 Admin，請確認受邀使用者已接受邀請，並清除 Windows 認證管理員中的 git:https://bitbucket.org；push 需要本機 Git 使用 Bitbucket App password 或 SSH key。";
+        if (ContainsAny(output, "Authentication failed", "HTTP Basic: Access denied", "could not read Username", "Invalid username or password"))
+            return "推送失敗：Git 認證失敗。請重新登入 Git Credential Manager，或改用具備寫入權限的 Personal Access Token / SSH key。";
+
+        if (ContainsAny(output, "Repository not found", "not appear to be a git repository", "Could not read from remote repository"))
+            return "推送失敗：找不到遠端 repository，或目前帳號無法存取。請確認 repository URL、專案可見性與帳號權限。";
+
+        if (ContainsAny(output, "non-fast-forward", "fetch first", "rejected"))
+            return "推送失敗：遠端已有更新。請先同步或處理衝突後再推送；Hexoer 不會自動 force push。";
+
+        return fallback;
+    }
+
+    private static bool ContainsAny(string text, params string[] needles)
+    {
+        foreach (var needle in needles)
+        {
+            if (text.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
     private GitHubRepositoryTarget ParseRepositoryTarget(string? input) =>
         GitHubService.ParseRepositoryTarget(input, SelectedRepositoryProvider.Provider);
+
+    private string BuildRemoteSummary(GitRemoteInfo info)
+    {
+        var target = ParseRepositoryTarget(RepositoryUrl);
+        if (target.IsValid)
+        {
+            var originMatches = OriginMatchesTarget(info, target);
+            var originLine = string.IsNullOrWhiteSpace(info.RemoteUrl)
+                ? "本機 origin：尚未設定"
+                : originMatches
+                    ? $"本機 origin：已連到同一個 {target.ProviderName} repository"
+                    : $"本機 origin：目前仍是 {ProviderName(info.Provider)}（{info.RemoteUrl}）";
+            var actionLine = originMatches
+                ? "狀態：本機 origin 與上方部署目標一致"
+                : $"狀態：上方部署目標是 {target.ProviderName}；按「連結、推送並啟用 Pages」會改用這個目標。";
+
+            return
+                $"部署目標：{target.ProviderName}\n" +
+                $"Repository：{target.Owner}/{target.Repository}\n" +
+                $"目標 URL：{target.CanonicalUrl}\n" +
+                $"建議 Pages：{target.PagesUrl ?? "—"}\n" +
+                $"分支：{info.Branch ?? "—"}\n" +
+                $"{originLine}\n" +
+                actionLine;
+        }
+
+        return
+            $"本機 origin 平台：{ProviderName(info.Provider)}\n" +
+            $"GitHub 使用者：{info.GhUser ?? "（未登入）"}\n" +
+            $"GitHub 驗證：{(info.GhAuthenticated ? "已登入" : "未登入")}\n" +
+            $"分支：{info.Branch ?? "—"}\n" +
+            $"Remote：{info.RemoteUrl ?? "（無 origin）"}\n" +
+            $"Repo：{(info.Owner is null ? "—" : $"{info.Owner}/{info.Repo}")}";
+    }
+
+    private string BuildSelectedTargetPagesSummary(GitHubRepositoryTarget target, GitRemoteInfo info)
+    {
+        var origin = string.IsNullOrWhiteSpace(info.RemoteUrl)
+            ? "尚未設定"
+            : $"{ProviderName(info.Provider)}（{info.RemoteUrl}）";
+
+        return
+            $"平台：{target.ProviderName}\n" +
+            "啟用：請在平台端確認 Pages / CI 設定\n" +
+            "狀態：尚未連到上方部署目標\n" +
+            $"建議網址：{target.PagesUrl ?? "—"}\n" +
+            $"本機 origin：{origin}\n" +
+            $"上方選定目標是 {target.ProviderName}；連結並推送後會以此目標為準。";
+    }
+
+    private bool ShouldShowSelectedTargetStatus(GitHubRepositoryTarget target, GitRemoteInfo info) =>
+        target.IsValid && !OriginMatchesTarget(info, target);
+
+    private static bool OriginMatchesTarget(GitRemoteInfo info, GitHubRepositoryTarget target) =>
+        target.IsValid
+        && info.Provider == target.Provider
+        && string.Equals(info.Owner, target.Owner, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(info.Repo, target.Repository, StringComparison.OrdinalIgnoreCase);
+
+    private static string ProviderName(RemoteGitProvider provider) => provider switch
+    {
+        RemoteGitProvider.GitHub => "GitHub",
+        RemoteGitProvider.GitLab => "GitLab",
+        RemoteGitProvider.Codeberg => "Codeberg",
+        RemoteGitProvider.Bitbucket => "Bitbucket",
+        _ => "Git"
+    };
+
+    private bool ShouldApplyOriginRemote(string? remoteUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(RepositoryUrl) || string.IsNullOrWhiteSpace(remoteUrl))
+            return false;
+
+        var target = GitHubService.ParseRepositoryTarget(remoteUrl);
+        return target.IsValid && target.Provider == SelectedRepositoryProvider.Provider;
+    }
 
     private void SelectRepositoryProvider(RemoteGitProvider provider, bool loadSettings)
     {

@@ -4,7 +4,7 @@
 
 #define MyAppName "Hexoer"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.1.1"
+  #define MyAppVersion "1.1.2"
 #endif
 #define MyAppPublisher "Hexoer"
 #define MyAppURL "https://github.com/"

@@ -133,7 +133,13 @@ public sealed partial class GitHubService
 
         if (target.Provider != RemoteGitProvider.GitHub)
         {
-            return (true, $"{target.ProviderName} 權限會在 git push 時由 Git Credential Manager 或 SSH 驗證。");
+            var authHint = target.Provider switch
+            {
+                RemoteGitProvider.GitLab => "GitLab 不使用 GitHub CLI；push 會使用本機 Git Credential Manager 或 SSH。若瀏覽器帳號是 Owner 但 push 仍 403，請清除 Windows 認證管理員中的 git:https://gitlab.com，或改用有 write_repository 權限的 Personal Access Token / SSH key。",
+                RemoteGitProvider.Bitbucket => "Bitbucket 不使用 GitHub CLI；HTTPS push 會使用本機 Git Credential Manager。請確認受邀使用者已接受 Bitbucket 使用者或群組邀請，且該帳號具備 repository/workspace write 權限；即使 Bitbucket 畫面顯示 Admin，push 仍取決於本機 credential。若瀏覽器已登入但 push 失敗，請清除 Windows 認證管理員中的 git:https://bitbucket.org，並改用 Bitbucket App password 或 SSH key。",
+                _ => $"{target.ProviderName} 權限會在 git push 時由 Git Credential Manager 或 SSH 驗證。"
+            };
+            return (true, authHint);
         }
 
         var result = await GhAsync(
@@ -328,7 +334,7 @@ public/
             progress?.Report("推送到 origin…");
             var push = await GitAsync("push -u origin HEAD", sitePath, 180_000, cancellationToken)
                 .ConfigureAwait(false);
-            if (!push.Success) return push;
+            if (!push.Success) return ExplainGitFailure(push);
         }
 
         progress?.Report("啟用 GitHub Pages（GitHub Actions）…");
@@ -362,8 +368,14 @@ public/
                 || !string.Equals(existingTarget.Owner, target.Owner, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(existingTarget.Repository, target.Repository, StringComparison.OrdinalIgnoreCase))
             {
-                return CommandResult.Fail(
-                    $"本機 origin 已指向其他 repository：{remote.StandardOutput.Trim()}。為避免推錯位置，Hexoer 未修改 origin。");
+                var previousOrigin = remote.StandardOutput.Trim();
+                progress?.Report($"重新指向 origin：{previousOrigin} → {target.CanonicalUrl}…");
+                var setRemote = await GitAsync(
+                    $"remote set-url origin \"{target.CanonicalUrl}\"",
+                    sitePath,
+                    15_000,
+                    cancellationToken).ConfigureAwait(false);
+                if (!setRemote.Success) return setRemote;
             }
         }
         else
@@ -449,7 +461,20 @@ public/
             sitePath,
             180_000,
             cancellationToken).ConfigureAwait(false);
-        if (!push.Success) return push;
+        if (!push.Success && IsNonFastForwardRejection(push.CombinedOutput))
+        {
+            var sync = await SyncOriginBranchBeforePushAsync(sitePath, remoteBranch, progress, cancellationToken)
+                .ConfigureAwait(false);
+            if (!sync.Success) return sync;
+
+            progress?.Report($"重新推送到 {target.ProviderName} {target.Owner}/{target.Repository}…");
+            push = await GitAsync(
+                $"push -u origin HEAD:\"{remoteBranch}\"",
+                sitePath,
+                180_000,
+                cancellationToken).ConfigureAwait(false);
+        }
+        if (!push.Success) return ExplainGitFailure(push);
 
         if (target.Provider == RemoteGitProvider.GitHub)
         {
@@ -475,7 +500,23 @@ public/
         progress?.Report(commit.CombinedOutput);
 
         progress?.Report("git push…");
-        return await GitAsync("push", sitePath, 180_000, cancellationToken).ConfigureAwait(false);
+        var push = await GitAsync("push", sitePath, 180_000, cancellationToken).ConfigureAwait(false);
+        if (!push.Success && IsNonFastForwardRejection(push.CombinedOutput))
+        {
+            var branch = await GitAsync("branch --show-current", sitePath, 10_000, cancellationToken)
+                .ConfigureAwait(false);
+            var branchName = branch.StandardOutput.Trim();
+            if (!branch.Success || !GitBranchRegex().IsMatch(branchName))
+                return ExplainGitFailure(push);
+
+            var sync = await SyncOriginBranchBeforePushAsync(sitePath, branchName, progress, cancellationToken)
+                .ConfigureAwait(false);
+            if (!sync.Success) return sync;
+
+            progress?.Report("重新 git push…");
+            push = await GitAsync("push", sitePath, 180_000, cancellationToken).ConfigureAwait(false);
+        }
+        return push.Success ? push : ExplainGitFailure(push);
     }
 
     public async Task<CommandResult> EnablePagesFromActionsAsync(
@@ -749,6 +790,92 @@ public/
         }
     }
 
+    private async Task<CommandResult> SyncOriginBranchBeforePushAsync(
+        string sitePath,
+        string branch,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (!GitBranchRegex().IsMatch(branch))
+            return CommandResult.Fail("遠端分支名稱格式不安全，已停止自動合併。");
+
+        progress?.Report($"遠端 {branch} 有新提交，先抓取並安全合併…");
+        var fetch = await GitAsync("fetch origin --prune", sitePath, 120_000, cancellationToken)
+            .ConfigureAwait(false);
+        if (!fetch.Success) return ExplainGitFailure(fetch);
+
+        var merge = await GitAsync(
+            $"merge \"origin/{branch}\" --allow-unrelated-histories --no-edit",
+            sitePath,
+            60_000,
+            cancellationToken).ConfigureAwait(false);
+        if (merge.Success) return merge;
+
+        await GitAsync("merge --abort", sitePath, 15_000, cancellationToken).ConfigureAwait(false);
+        return CommandResult.Fail(
+            $"遠端內容與本機內容發生合併衝突，已中止合併且未推送。\n{merge.CombinedOutput}",
+            merge.ExitCode,
+            merge.StandardOutput);
+    }
+
+    private static CommandResult ExplainGitFailure(CommandResult result)
+    {
+        var output = result.CombinedOutput;
+        if (string.IsNullOrWhiteSpace(output))
+            return result;
+
+        if (IsNonFastForwardRejection(output))
+        {
+            return CommandResult.Fail(
+                "遠端 repository 有本機尚未合併的更新。Hexoer 已嘗試先抓取並安全合併；若仍失敗，請依日誌處理衝突後再推送。\n" + output,
+                result.ExitCode,
+                result.StandardOutput);
+        }
+
+        if (ContainsAny(output, "You are not allowed to push code", "requested URL returned error: 403", "HTTP 403"))
+        {
+            return CommandResult.Fail(
+                "推送失敗：目前 Git push 使用的 GitLab 帳號或 token 沒有此專案的寫入權限。請確認它和瀏覽器登入帳號一致，並在 GitLab 將帳號加入專案或群組授予 Developer/Maintainer；或改用有 write_repository 權限的 Personal Access Token / SSH key 後重試。\n" + output,
+                result.ExitCode,
+                result.StandardOutput);
+        }
+
+        if (ContainsAny(output, "bitbucket.org") && ContainsAny(output, "Authentication failed", "HTTP Basic: Access denied", "could not read Username", "Invalid username or password", "403", "Forbidden"))
+        {
+            return CommandResult.Fail(
+                "推送失敗：Bitbucket 認證或權限不足。若 Bitbucket 畫面已顯示 Admin，請確認受邀使用者已接受邀請，並清除 Windows 認證管理員中的 git:https://bitbucket.org；push 需要本機 Git 使用 Bitbucket App password 或 SSH key。\n" + output,
+                result.ExitCode,
+                result.StandardOutput);
+        }
+        if (ContainsAny(output, "Authentication failed", "HTTP Basic: Access denied", "could not read Username", "Invalid username or password"))
+        {
+            return CommandResult.Fail(
+                "推送失敗：Git 認證失敗。請重新登入 Git Credential Manager，或改用具備寫入權限的 Personal Access Token / SSH key。\n" + output,
+                result.ExitCode,
+                result.StandardOutput);
+        }
+
+        return result;
+    }
+
+    private static bool IsNonFastForwardRejection(string output) =>
+        ContainsAny(
+            output,
+            "fetch first",
+            "Updates were rejected because the remote contains work that you do not have locally",
+            "non-fast-forward",
+            "failed to push some refs");
+
+    private static bool ContainsAny(string text, params string[] needles)
+    {
+        foreach (var needle in needles)
+        {
+            if (text.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
     private async Task PrepareReadmeForRemoteMergeAsync(
         string sitePath,
         string remoteBranch,

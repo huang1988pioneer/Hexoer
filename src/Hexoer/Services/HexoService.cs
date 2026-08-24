@@ -45,6 +45,8 @@ public sealed class HexoService
             hexo = await _runner.RunShellAsync("hexo -v", cancellationToken: ct).ConfigureAwait(false);
         status.HexoCliInstalled = hexo.Success || (hexo.CombinedOutput?.Contains("hexo:", StringComparison.OrdinalIgnoreCase) ?? false);
         status.HexoVersion = ExtractHexoVersion(hexo.CombinedOutput);
+        if (status.NpmInstalled)
+            await PopulateLatestHexoVersionAsync(status, ct).ConfigureAwait(false);
 
         status.ProjectValid = _context.IsHexoProject;
         if (status.ProjectValid)
@@ -154,6 +156,31 @@ public sealed class HexoService
             throw new InvalidOperationException("尚未選擇有效的 Hexo 專案資料夾。");
     }
 
+    private async Task PopulateLatestHexoVersionAsync(EnvironmentStatus status, CancellationToken ct)
+    {
+        var latest = await _runner.RunShellAsync("npm view hexo version --silent", cancellationToken: ct, timeoutMs: 15_000).ConfigureAwait(false);
+        if (!latest.Success)
+        {
+            status.HexoVersionNotice = "無法查詢 npm 上的最新 Hexo 版本。";
+            return;
+        }
+
+        status.LatestHexoVersion = ExtractPackageVersion(latest.StandardOutput);
+        if (string.IsNullOrWhiteSpace(status.LatestHexoVersion))
+        {
+            status.HexoVersionNotice = "無法解析 npm 回傳的最新 Hexo 版本。";
+            return;
+        }
+
+        var comparison = CompareSemanticVersions(status.HexoVersion, status.LatestHexoVersion);
+        if (comparison is null)
+            return;
+
+        status.HexoIsLatest = comparison >= 0;
+        if (comparison < 0)
+            status.HexoVersionNotice = $"Hexo 有新版本 {status.LatestHexoVersion} 可更新。";
+    }
+
     private static string? CleanVersion(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
@@ -168,6 +195,34 @@ public sealed class HexoService
         if (m.Success) return m.Groups[1].Value;
         m = Regex.Match(output, @"([0-9]+\.[0-9]+\.[0-9]+)");
         return m.Success ? m.Groups[1].Value : CleanVersion(output);
+    }
+
+    private static string? ExtractPackageVersion(string? output)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return null;
+        var m = Regex.Match(output, @"([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)");
+        return m.Success ? m.Groups[1].Value : CleanVersion(output);
+    }
+
+    private static int? CompareSemanticVersions(string? current, string? latest)
+    {
+        var currentVersion = ParseSemanticVersion(current);
+        var latestVersion = ParseSemanticVersion(latest);
+        return currentVersion is null || latestVersion is null
+            ? null
+            : currentVersion.CompareTo(latestVersion);
+    }
+
+    private static Version? ParseSemanticVersion(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version)) return null;
+        var m = Regex.Match(version, @"([0-9]+)\.([0-9]+)\.([0-9]+)");
+        return m.Success
+            ? new Version(
+                int.Parse(m.Groups[1].Value),
+                int.Parse(m.Groups[2].Value),
+                int.Parse(m.Groups[3].Value))
+            : null;
     }
 
     private static string Quote(string value)

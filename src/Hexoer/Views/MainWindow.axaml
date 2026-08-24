@@ -21,9 +21,9 @@
   <DockPanel>
     <!-- Status bar -->
     <Border DockPanel.Dock="Bottom" Classes="statusbar" Padding="12,6">
-      <Grid ColumnDefinitions="*,Auto">
-        <TextBlock Text="{Binding ProjectPathDisplay}" Classes="muted" TextTrimming="CharacterEllipsis" />
-        <TextBlock Grid.Column="1" Text="{Binding GlobalStatus}" Classes="muted" Margin="16,0,0,0" />
+      <Grid ColumnDefinitions="Auto,*">
+        <TextBlock Text="{Binding ProjectPathDisplay}" Classes="muted" MaxWidth="360" TextTrimming="CharacterEllipsis" />
+        <TextBlock Grid.Column="1" Text="{Binding GlobalStatus}" Classes="muted" Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
       </Grid>
     </Border>
 

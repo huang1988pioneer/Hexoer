@@ -120,9 +120,7 @@ public partial class SetupViewModel : PageViewModelBase
             NodeStatus = status.NodeInstalled ? $"✓ {status.NodeVersion}" : "✗ 未安裝 Node.js";
             NpmStatus = status.NpmInstalled ? $"✓ {status.NpmVersion}" : "✗ 未安裝 npm";
             GitStatus = status.GitInstalled ? $"✓ {status.GitVersion}" : "✗ 未安裝 Git";
-            HexoStatus = status.HexoCliInstalled
-                ? $"✓ {status.HexoVersion ?? "可用"}"
-                : "○ 尚未全域安裝（可使用 npx）";
+            HexoStatus = BuildHexoStatus(status);
             ProjectStatus = status.ProjectValid
                 ? $"✓ 有效專案：{status.ProjectPath}"
                 : string.IsNullOrWhiteSpace(status.ProjectPath)
@@ -134,7 +132,13 @@ public partial class SetupViewModel : PageViewModelBase
                 ? $"✓ {identity.UserName} <{identity.Email}>" : "○ 尚未設定 git user.name / user.email";
             GitHubStatus = identity.GitHubAuthenticated ? "✓ GitHub CLI 已登入" : "○ 尚未透過 GitHub CLI 登入";
             AllReady = status.NodeInstalled && status.NpmInstalled && status.GitInstalled && status.ProjectValid;
-            StatusMessage = AllReady ? "環境就緒" : "請完成環境或專案設定";
+            if (status.HexoIsLatest == false && !string.IsNullOrWhiteSpace(status.LatestHexoVersion))
+                StatusMessage = $"Hexo 有新版本 {status.LatestHexoVersion} 可更新";
+            else
+                StatusMessage = AllReady ? "環境就緒" : "請完成環境或專案設定";
+
+            if (!string.IsNullOrWhiteSpace(status.HexoVersionNotice))
+                AppendLog(status.HexoVersionNotice);
         }
         catch (Exception ex)
         {
@@ -477,6 +481,23 @@ public partial class SetupViewModel : PageViewModelBase
         IsServerRunning = _services.Server.IsRunning;
         ServerUrl = _services.Server.PreviewUrl;
         ServerPort = _services.Server.Port;
+    }
+
+    private static string BuildHexoStatus(EnvironmentStatus status)
+    {
+        if (!status.HexoCliInstalled)
+            return string.IsNullOrWhiteSpace(status.LatestHexoVersion)
+                ? "○ 尚未全域安裝（可使用 npx）"
+                : $"○ 尚未全域安裝（可使用 npx；npm 最新 {status.LatestHexoVersion}）";
+
+        var current = status.HexoVersion ?? "可用";
+        if (status.HexoIsLatest == true)
+            return $"✓ {current}（已是最新）";
+        if (status.HexoIsLatest == false && !string.IsNullOrWhiteSpace(status.LatestHexoVersion))
+            return $"⚠ {current}（最新 {status.LatestHexoVersion}，建議更新）";
+        if (!string.IsNullOrWhiteSpace(status.LatestHexoVersion))
+            return $"✓ {current}（npm 最新 {status.LatestHexoVersion}）";
+        return $"✓ {current}";
     }
 
     private async Task RunStepAsync(string message, Func<Task> action)
